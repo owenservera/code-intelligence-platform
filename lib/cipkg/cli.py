@@ -34,6 +34,23 @@ def _ensure_gitignore(root):
         with open(gi, "a") as f:
             f.write("\n# CIP index data\n.cip/data/\n")
 
+def _progress(phase, cur, total):
+    """Print progress bar for long operations."""
+    if phase == "scan":
+        bar_len = 30
+        filled = int(bar_len * cur / total) if total else 0
+        bar = "=" * filled + "-" * (bar_len - filled)
+        print(f"\r  scan  [{bar}] {cur}/{total}", end="", flush=True)
+        if cur == total: print()
+    elif phase == "embed":
+        bar_len = 30
+        filled = int(bar_len * cur / total) if total else 0
+        bar = "=" * filled + "-" * (bar_len - filled)
+        print(f"\r  embed [{bar}] {cur}/{total}", end="", flush=True)
+        if cur == total: print()
+    elif phase == "link":
+        print("  linking edges...", end="", flush=True)
+
 def cmd_init(root):
     from .base import load_config
     from . import detect, indexer
@@ -52,17 +69,17 @@ def cmd_init(root):
     set_meta(con, "detection", json.dumps(det))
     con.commit()
     print(f"detected: primary={det['primary']} stacks={det['stacks']} langs={det['languages']}")
-    stats = indexer.sync(root, full=True)
+    print("indexing structure (fast, no embedding)...")
+    stats = indexer.sync(root, full=True, do_embed=False, progress=_progress)
     print(f"indexed: {stats['files']} files, {stats['symbols']} symbols, "
-          f"{stats['chunks']} chunks, {stats['edges']} edges, "
-          f"{stats['embedded']} vectors in {stats['ms']}ms")
+          f"{stats['chunks']} chunks, {stats['edges']} edges in {stats['ms']}ms")
     try:
         from . import gitindex
         g = gitindex.git_index(root, depth=int(cfg["git"]["depth"]))
         print(f"git index: {g}")
     except Exception as e:
         print(f"git index skipped: {e}")
-    print("ready. Entry points: AGENTS.md · `cip mcp` · `cip serve` · `cip --help`")
+    print("structure ready. Run `cip embed` to enable semantic search.")
 
 def cmd_doctor(root):
     from .base import load_config
@@ -116,6 +133,8 @@ def main(argv=None):
     sub.add_parser("detect")
     ip = sub.add_parser("index"); ip.add_argument("--full", action="store_true")
     ip.add_argument("--reembed", action="store_true")
+    ep = sub.add_parser("embed", help="embed chunks for semantic search (slow, CPU)")
+    ep.add_argument("--batch", type=int, default=64)
     sub.add_parser("sync")
     wp = sub.add_parser("watch"); wp.add_argument("--interval", type=float, default=1.0)
     dp = sub.add_parser("daemon", help="watcher + server, single-writer lock")
@@ -176,7 +195,15 @@ def main(argv=None):
             con.execute("DELETE FROM vectors")
             con.execute("DELETE FROM meta WHERE key='embedder_name'")
             con.commit()
-        _out(indexer.sync(root, full=a.full))
+        _out(indexer.sync(root, full=a.full, progress=_progress))
+    elif a.cmd == "embed":
+        from . import indexer
+        from .store import connect
+        from .base import load_config
+        cfg = load_config(root)
+        con = connect(root)
+        n = indexer.embed_pending(con, cfg, batch=a.batch, progress=_progress)
+        print(f"embedded {n} chunks")
     elif a.cmd == "sync":
         from . import indexer; _out(indexer.sync(root))
     elif a.cmd == "watch":

@@ -119,7 +119,9 @@ def build_tested_by(con, cfg):
                 con.execute("INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
                             (t, tf, "tested_by", srow["path"]))
 
-def embed_pending(con, cfg, batch=64):
+def embed_pending(con, cfg, batch=64, progress=None):
+    """Embed unembedded chunks. Returns count embedded.
+    progress(phase, current, total) called per batch."""
     cached = get_meta(con, "embedder_name")
     if cached:
         n = con.execute("SELECT COUNT(*) c FROM chunks c LEFT JOIN vectors v "
@@ -130,6 +132,9 @@ def embed_pending(con, cfg, batch=64):
     emb = get_embedder(cfg)
     set_meta(con, "embedder_name", emb.name)
     total = 0
+    total_chunks = con.execute("SELECT COUNT(*) c FROM chunks c LEFT JOIN vectors v "
+                               "ON v.id=c.id AND v.model=? WHERE v.id IS NULL",
+                               (emb.name,)).fetchone()["c"]
     while True:
         rows = con.execute("SELECT c.id, c.text FROM chunks c LEFT JOIN vectors v "
                            "ON v.id=c.id AND v.model=? WHERE v.id IS NULL LIMIT ?",
@@ -140,6 +145,8 @@ def embed_pending(con, cfg, batch=64):
                         (r["id"], emb.name, to_blob(v)))
         con.commit()
         total += len(rows)
+        if progress:
+            progress("embed", total, total_chunks)
     con.execute("DELETE FROM vectors WHERE id NOT IN (SELECT id FROM chunks)")
     con.execute("DELETE FROM vectors WHERE model <> ?", (emb.name,))
     return total
@@ -149,7 +156,8 @@ def compute_stats(con):
     return {"files": q("files"), "symbols": q("symbols"), "chunks": q("chunks"),
             "edges": q("edges"), "vectors": q("vectors")}
 
-def sync(root=None, full=False, do_embed=True):
+def sync(root=None, full=False, do_embed=True, progress=None):
+    """Index repo. progress(phase, current, total) for long operations."""
     root = root or repo_root()
     cfg = load_config(root)
     con = connect(root)
@@ -157,14 +165,21 @@ def sync(root=None, full=False, do_embed=True):
     known = {r["path"]: (r["hash"], r["mtime"])
              for r in con.execute("SELECT path, hash, mtime FROM files")}
     all_paths, dirty, deleted = set(known), [], list(known)
-
-    for rel in iter_files(root, cfg):
+    # Phase 1: scan files
+    file_list = list(iter_files(root, cfg))
+    if progress:
+        progress("scan", 0, len(file_list))
+    scanned = 0
+    for rel in file_list:
         ap = os.path.join(root, rel)
         try: st = os.stat(ap)
         except OSError: continue
         if rel in known: deleted.remove(rel)
         kh = known.get(rel)
         if kh and kh[1] == st.st_mtime and not full:
+            scanned += 1
+            if progress and scanned % 50 == 0:
+                progress("scan", scanned, len(file_list))
             continue                                        # mtime fast path
         try:
             with open(ap, encoding="utf-8", errors="replace") as f: src = f.read()
@@ -172,23 +187,39 @@ def sync(root=None, full=False, do_embed=True):
         h = sha(src)
         if kh and kh[0] == h and not full:
             con.execute("UPDATE files SET mtime=? WHERE path=?", (st.st_mtime, rel))
+            scanned += 1
+            if progress and scanned % 50 == 0:
+                progress("scan", scanned, len(file_list))
             continue                                        # content unchanged
         index_file(con, rel, src, h, st.st_size, st.st_mtime)
         dirty.append(rel)
         all_paths.add(rel)
-
+        scanned += 1
+        if progress and scanned % 10 == 0:
+            progress("scan", scanned, len(file_list))
+    if progress:
+        progress("scan", len(file_list), len(file_list))
+    # Phase 2: deleted
     for rel in deleted:
         remove_file(con, rel)
         all_paths.discard(rel)
-
+    # Phase 3: link edges
     if dirty or deleted or full:
+        if progress:
+            progress("link", 0, 0)
         link_imports(con, dirty or None, all_paths)
         resolve_symbol_edges(con, cfg, dirty or None)
         from .parsers import build_heritage
         build_heritage(con, dirty or None)
         con.commit()
-
-    n_emb = embed_pending(con, cfg) if do_embed else 0
+        if progress:
+            progress("link", 1, 1)
+    # Phase 4: embed (optional)
+    n_emb = 0
+    if do_embed:
+        def _emb_prog(phase, cur, tot):
+            if progress: progress("embed", cur, tot)
+        n_emb = embed_pending(con, cfg, progress=_emb_prog)
     stats = compute_stats(con)
     stats.update(dirty=len(dirty), deleted=len(deleted), embedded=n_emb,
                  ms=int((time.time() - t0) * 1000))

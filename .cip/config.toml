@@ -1,0 +1,37 @@
+[index]
+max_file_kb = 512
+exclude = []
+test_globs = ["test_", "_test.", ".test.", ".spec.", "/tests/", "__tests__"]
+
+[embed]
+backend = "local"           # local | auto | hashing | sentence-transformers
+model = "BAAI/bge-small-en-v1.5"
+dim = 384
+
+[retrieval]
+lexical_k = 30
+vector_k = 30
+context_budget_tokens = 6000
+
+[serve]
+port = 8787
+
+# ---- v1.0 ----
+[summary]
+backend = "structural"      # structural (offline) | llm
+llm_model = "gpt-4o-mini"
+max_llm_per_sync = 20
+
+[git]
+depth = 500
+co_change_min = 2
+
+[rerank]
+enabled = true
+
+[vector]
+backend = "sqlite"          # sqlite | sqlite-vec (experimental)
+
+# ---- v1.1 stack pack ----
+[audit]
+ignore_rules = []        # e.g. ["QA-CONSOLE", "QA-ANY"]
