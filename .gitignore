@@ -1,0 +1,6 @@
+# CIP index data
+.cip/data/
+
+# Python
+__pycache__/
+*.pyc
