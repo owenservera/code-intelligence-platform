@@ -1,6 +1,10 @@
-# CIP index data
+# CIP index data (repo-specific)
 .cip/data/
 
 # Python
 __pycache__/
 *.pyc
+
+# Config files (generated per-repo)
+.cip/config.toml
+.cip/ontology.json
