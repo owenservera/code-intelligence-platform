@@ -29,3 +29,11 @@ build/
 
 # Sync system backups
 sync_global/backups/
+
+# Documentation and tests (most files ignored, but critical ones tracked)
+docs/
+!docs/development/
+!docs/development/UPGRADE_01_BUGS_AND_DESIGN_ISSUES.md
+
+tests/
+!tests/sync-system/
