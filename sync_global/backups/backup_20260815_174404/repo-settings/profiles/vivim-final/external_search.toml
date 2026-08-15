@@ -1,6 +1,0 @@
-# Vivim-Final External Search Settings
-# Configure external code search integration
-
-[external_search]
-defer_to = "bun"
-args = ["run", "devops", "code-index", "search", "{query}"]

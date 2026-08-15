@@ -1,7 +1,0 @@
-# CIP Index Retrieval Settings
-# Configures code retrieval for the CIP core project
-
-[retrieval]
-context_budget_tokens = 6000
-lexical_k = 30
-vector_k = 30

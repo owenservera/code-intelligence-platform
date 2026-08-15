@@ -1,6 +1,0 @@
-# CIP Index Stack Settings
-# Stack-specific configuration for the CIP project
-
-[stack]
-prisma_store_contracts = false
-tauri_enabled = false

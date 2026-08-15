@@ -1,8 +1,0 @@
-# Vivim-Final Python Settings
-# Python-specific configuration for the 13-layer engine backend
-
-[language.python]
-max_file_kb = 512
-test_globs = ["test_", "_test.", ".test.", "/tests/", "__tests__"]
-ignore_dirs = ["__pycache__", ".venv", "venv", ".pytest_cache", ".mypy_cache"]
-extensions = [".py", ".pyx"]

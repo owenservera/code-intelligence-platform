@@ -1,6 +1,0 @@
-# Vivim-Final Custom Rules Settings
-# Enable custom Python rules for Vivim-specific conventions
-
-[custom_rules]
-enabled = true
-rules_file = ".cip/rules.py"
