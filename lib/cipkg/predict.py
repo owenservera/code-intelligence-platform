@@ -7,9 +7,13 @@ import re
 from .base import repo_root, load_config, est_tokens
 from .store import connect
 from . import retrieve, router
+from . import learning
 
 def predict_next_context(root, current_operation, current_symbol=None, current_query=None):
-    """Predict what context the agent will need next."""
+    """Predict what context the agent will need next.
+    
+    Applies learning-based confidence adjustments from historical session data.
+    """
     predictions = []
     
     if current_operation == "symbol":
@@ -60,7 +64,11 @@ def predict_next_context(root, current_operation, current_symbol=None, current_q
             {"tool": "refactors", "args": {}, "confidence": 0.7, "reason": "Check quick-win refactors"}
         ])
     
-    return {"predictions": predictions[:5]}
+    # Apply learning-based confidence adjustments
+    root = root or repo_root()
+    adjusted_predictions = learning.apply_learning_to_predictions(root, current_query, predictions)
+    
+    return {"predictions": adjusted_predictions[:5]}
 
 def context_adaptive(root, query=None, symbol=None, base_budget=6000):
     """Adaptive context budgeting based on query complexity."""

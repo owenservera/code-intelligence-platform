@@ -5,6 +5,7 @@ from . import gapfill
 from .hooks import install_agent_hooks, run_hook_command
 from .session import session_start, session_end, get_active_session
 from .verify import verify, verification_gate
+from . import learning
 
 HOOKS = ("post-commit", "post-merge", "post-checkout")
 MARK = "# >>> cip >>>"
@@ -285,6 +286,20 @@ def handle_verify_command(root, args):
         _out(result)
         return 1
     
+    _out(result)
+
+def handle_learning_command(root, args):
+    """Handle learning loop commands."""
+    if args.learning_cmd == "analyze":
+        result = learning.analyze_sessions(root)
+    elif args.learning_cmd == "update":
+        result = learning.update_prediction_confidence(root)
+    elif args.learning_cmd == "report":
+        result = learning.generate_learning_report(root)
+    elif args.learning_cmd == "patterns":
+        result = learning.detect_agent_patterns(root)
+    else:
+        result = {"error": f"Unknown learning command: {args.learning_cmd}"}
     _out(result)
 
 # ── commands ─────────────────────────────────────────────────────────────────
@@ -642,6 +657,14 @@ def setup_argument_parser():
     vp.add_argument("--no-audit", action="store_true", help="skip audit check")
     vp.add_argument("--blocking", action="store_true", help="exit 1 if verification fails")
 
+    # learning loop
+    lp = sub.add_parser("learning", help="learning loop: analyze sessions and update predictions")
+    learning_sub = lp.add_subparsers(dest="learning_cmd")
+    learning_sub.add_parser("analyze", help="analyze recent sessions for patterns")
+    learning_sub.add_parser("update", help="update prediction confidence based on learning data")
+    learning_sub.add_parser("report", help="generate comprehensive learning report")
+    learning_sub.add_parser("patterns", help="detect agent-specific patterns")
+
     # v1.2 durability
     sub.add_parser("rebuild", help="wipe and fully reindex")
     vf = sub.add_parser("verify", help="check index vs disk drift"); vf.add_argument("--repair", action="store_true")
@@ -683,6 +706,7 @@ def dispatch_command(root, args):
         "impact": handle_impact_command,
         "session": handle_session_command,
         "verify": handle_verify_command,
+        "learning": handle_learning_command,
         "selftest": handle_selftest_command,
         "audit": handle_audit_command,
         "findings": handle_findings_command,

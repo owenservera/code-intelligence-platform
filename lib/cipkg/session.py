@@ -1,11 +1,12 @@
 """Session management for agent integration: standing context, session lifecycle.
 Provides budget-capped repo context packets and session-end learning loops."""
-import os, json, time
+import os, json, time, subprocess
 from .base import repo_root, load_config
 from .store import connect
 from . import summarize, gitindex, retrieve
 from .stack import audit as stack_audit
 from .verify import verify
+from . import learning
 
 def session_start(root=None):
     """Initialize session with compact repo context packet.
@@ -86,6 +87,7 @@ def session_end(root=None, session_id=None):
     - Audit findings delta
     - Test results changes
     - Verification gate results
+    - Triggers learning loop analysis to update prediction model
     """
     root = root or repo_root()
     
@@ -130,6 +132,13 @@ def session_end(root=None, session_id=None):
     # Clean up active session
     os.remove(session_file)
     
+    # Trigger learning loop analysis (non-blocking)
+    try:
+        learning.update_prediction_confidence(root)
+    except Exception as e:
+        # Don't fail session end if learning loop has issues
+        pass
+    
     return {
         "session_id": session_data["session_id"],
         "duration": session_data["duration_seconds"],
@@ -137,7 +146,8 @@ def session_end(root=None, session_id=None):
         "audit_delta": learning_data["audit_delta"],
         "verification_passed": verification_result["can_proceed"],
         "blocked_by": verification_result.get("blocked_by", []),
-        "archived": archive_file
+        "archived": archive_file,
+        "learning_updated": True
     }
 
 def _collect_edited_files(root, session_start_time):
