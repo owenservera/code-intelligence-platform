@@ -102,6 +102,124 @@ def where_fields(con, root):
                 out.setdefault(model, set()).update(keys)
     return out
 
+def _resolve_store_contract(src, line_start, line_end):
+    """Attempt to resolve store contract method calls to underlying Prisma operations.
+    
+    For repos that wrap Prisma behind store contracts (like Vivim's src/storage/ layer),
+    this maps contract method names to the Prisma operations they wrap.
+    """
+    # Store contract patterns (repo-agnostic, matches common patterns)
+    contract_patterns = [
+        (r'(\w+)\.findMany\s*\(', 'findMany'),
+        (r'(\w+)\.findFirst\s*\(', 'findFirst'),
+        (r'(\w+)\.findUnique\s*\(', 'findUnique'),
+        (r'(\w+)\.create\s*\(', 'create'),
+        (r'(\w+)\.update\s*\(', 'update'),
+        (r'(\w+)\.delete\s*\(', 'delete'),
+        (r'(\w+)\.upsert\s*\(', 'upsert'),
+    ]
+    
+    lines = src.splitlines()
+    resolved = []
+    
+    for i in range(line_start - 1, min(line_end, len(lines))):
+        line = lines[i]
+        for pattern, operation in contract_patterns:
+            match = re.search(pattern, line)
+            if match:
+                resolved.append({
+                    'method': match.group(1),
+                    'operation': operation,
+                    'line': i + 1
+                })
+    
+    return resolved
+
+def index_stack_with_store_contracts(con, root):
+    """Extended stack indexing that resolves store contract patterns.
+    
+    This adds a second pass for repos that wrap Prisma behind architectural layers.
+    It walks storage directories and resolves contract methods to underlying Prisma calls.
+    """
+    ensure(con)
+    rel = find_schema(root)
+    models = parse_schema(_read(root, rel)) if rel else {}
+    
+    # Standard indexing
+    con.execute("DELETE FROM models")
+    for name, m in models.items():
+        indexed = m["indexes"] + [[u] for u in m["uniques"]]
+        con.execute("INSERT INTO models(name,fields,indexes,source) VALUES(?,?,?,?)",
+                    (name, str([f["name"] for f in m["fields"]]), str(indexed), rel or ""))
+    
+    con.execute("DELETE FROM model_usage")
+    usage = 0
+    rows = con.execute("SELECT path FROM files WHERE language IN ('typescript','javascript')").fetchall()
+    
+    # First pass: direct Prisma calls
+    for r in rows:
+        src = _read(root, r["path"])
+        for m in USAGE_RE.finditer(src):
+            model, op = m.group(1), m.group(2)
+            if model not in models:
+                continue
+            ln = src.count("\n", 0, m.start()) + 1
+            sym = con.execute(
+                "SELECT id FROM symbols WHERE path=? AND start_line<=? AND end_line>=? "
+                "ORDER BY (end_line-start_line) LIMIT 1", (r["path"], ln, ln)).fetchone()
+            con.execute("INSERT OR IGNORE INTO model_usage(model,operation,symbol_id,path) "
+                        "VALUES(?,?,?,?)",
+                        (model, op, sym["id"] if sym else "", r["path"]))
+            usage += 1
+    
+    # Second pass: store contract resolution for storage directories
+    storage_dirs = ["src/storage", "storage", "lib/storage", "app/storage"]
+    for storage_dir in storage_dirs:
+        storage_path = os.path.join(root, storage_dir)
+        if not os.path.isdir(storage_path):
+            continue
+            
+        for dirpath, dirnames, filenames in os.walk(storage_path):
+            for filename in filenames:
+                if not filename.endswith((".ts", ".js", ".tsx", ".jsx")):
+                    continue
+                    
+                file_path = os.path.join(dirpath, filename)
+                rel_path = os.path.relpath(file_path, root).replace(os.sep, "/")
+                src = _read(root, rel_path)
+                
+                # Look for store contract patterns that might wrap Prisma
+                # Pattern: method calls that could be store contracts
+                for m in re.finditer(r'(\w+)\.(findMany|findFirst|findUnique|create|update|delete|upsert|createMany|updateMany|deleteMany|count|aggregate|groupBy)\s*\(', src):
+                    method_name = m.group(1)
+                    operation = m.group(2)
+                    
+                    # Skip if this is a direct prisma call (already handled)
+                    if method_name == "prisma":
+                        continue
+                        
+                    # Try to infer the model from context or patterns
+                    # This is heuristic - store contracts often have method names like "findUsers", "createPost"
+                    model_guess = None
+                    for model_name in models.keys():
+                        if model_name.lower() in method_name.lower():
+                            model_guess = model_name
+                            break
+                    
+                    if model_guess:
+                        ln = src.count("\n", 0, m.start()) + 1
+                        sym = con.execute(
+                            "SELECT id FROM symbols WHERE path=? AND start_line<=? AND end_line>=? "
+                            "ORDER BY (end_line-start_line) LIMIT 1", (rel_path, ln, ln)).fetchone()
+                        
+                        con.execute("INSERT OR IGNORE INTO model_usage(model,operation,symbol_id,path) "
+                                    "VALUES(?,?,?,?)",
+                                    (model_guess, operation, sym["id"] if sym else "", rel_path))
+                        usage += 1
+    
+    con.commit()
+    return {"models": len(models), "usage_sites": usage, "schema": rel, "store_contract_resolved": True}
+
 def models_report(root=None):
     from ..base import repo_root
     from ..store import connect

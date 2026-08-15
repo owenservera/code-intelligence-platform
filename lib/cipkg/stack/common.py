@@ -21,6 +21,20 @@ CREATE TABLE IF NOT EXISTS models(
 CREATE TABLE IF NOT EXISTS model_usage(
   model TEXT, operation TEXT, symbol_id TEXT, path TEXT,
   PRIMARY KEY(model, operation, symbol_id, path));
+
+CREATE TABLE IF NOT EXISTS tauri_commands(
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  args TEXT,
+  file TEXT,
+  line INTEGER,
+  is_allowed INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS tauri_capabilities(
+  id INTEGER PRIMARY KEY,
+  command TEXT NOT NULL UNIQUE
+);
 """
 
 def ensure(con):

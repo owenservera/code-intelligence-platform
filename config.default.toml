@@ -3,6 +3,22 @@ max_file_kb = 512
 exclude = []
 test_globs = ["test_", "_test.", ".test.", ".spec.", "/tests/", "__tests__"]
 
+# Repo-specific profiles (opt-in via profile = "name" in .cip/config.toml)
+[profile.vivim]
+exclude = [
+  "src/generated", "seeds/taxonomy", "devops/opencode",
+  "context-pack-md", "context-pack.zip",
+  "prisma/migrations.bak", "frontend/playwright-report",
+  "frontend/tool-results", "frontend/test-results",
+  "frontend/download", "claude-investigate", "intelligence-pack-acu-dcb-storage",
+]
+
+# External search integration (for repos with their own search tools)
+[external_search]
+# Defer raw snippet retrieval to external command instead of CIP's vector store
+# defer_to = "code-index"  # Command name to run (e.g., "bun run devops code-index")
+# args = ["search", "{query}"]  # Arguments template, {query} will be replaced
+
 [embed]
 backend = "auto"           # auto | service | local | hashing
 model = "BAAI/bge-small-en-v1.5"

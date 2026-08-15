@@ -56,6 +56,69 @@ def findings(root=None, severity=None, rule=None, path=None, limit=100):
     args.append(limit)
     return [dict(r) for r in con.execute(q, args)]
 
+def findings_structured(root=None, severity=None, rule=None, path=None, limit=100):
+    """Return findings in machine-actionable structured format.
+    
+    Returns {file, line, rule_id, message, suggested_pattern} format
+    that agents can directly convert to edits instead of parsing prose.
+    """
+    raw_findings = findings(root, severity, rule, path, limit)
+    structured = []
+    
+    for f in raw_findings:
+        structured.append({
+            "file": f.get("path"),
+            "line": f.get("line", 0),
+            "rule_id": f.get("rule"),
+            "message": f.get("title"),
+            "suggested_pattern": f.get("suggestion", ""),
+            "severity": f.get("severity"),
+            "effort": f.get("effort", "unknown")
+        })
+    
+    return structured
+
+def audit_file(root, file_path):
+    """Run audit scoped to a single file for fast post-edit checks.
+    
+    Returns only findings relevant to the specified file.
+    """
+    return findings(root, path=file_path, limit=20)
+
+def audit_diff(root):
+    """Run audit scoped to git diff for fast incremental checks.
+    
+    Returns findings only for files changed in the current working tree.
+    """
+    import subprocess
+    try:
+        # Get list of changed files
+        result = subprocess.run(
+            ["git", "diff", "--name-only"],
+            capture_output=True,
+            text=True,
+            cwd=root or repo_root()
+        )
+        changed_files = [f.strip() for f in result.stdout.split('\n') if f.strip()]
+        
+        if not changed_files:
+            return {"findings": [], "changed_files": []}
+        
+        # Run audit for each changed file
+        all_findings = []
+        for file_path in changed_files:
+            file_findings = findings(root, path=file_path, limit=10)
+            all_findings.extend(file_findings)
+        
+        return {
+            "findings": all_findings,
+            "changed_files": changed_files,
+            "total_findings": len(all_findings)
+        }
+        
+    except Exception as e:
+        return {"error": str(e), "findings": []}
+
 def quick_wins(root=None, limit=10):
     con = connect(root or repo_root()); ensure(con)
     rows = con.execute(

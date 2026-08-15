@@ -25,6 +25,18 @@ DEFAULT_CONFIG = {
     # ---- v2 performance ----
     "perf": {"workers": 0},                 # 0=auto (cpu_count); 1=serial; N=explicit
     "maintain": {"event_days": 30},
+    # ---- repo profiles ----
+    "profile": {
+        "vivim": {
+            "exclude": [
+                "src/generated", "seeds/taxonomy", "devops/opencode",
+                "context-pack-md", "context-pack.zip",
+                "prisma/migrations.bak", "frontend/playwright-report",
+                "frontend/tool-results", "frontend/test-results",
+                "frontend/download", "claude-investigate", "intelligence-pack-acu-dcb-storage",
+            ]
+        }
+    }
 }
 
 def repo_root(start=None):
@@ -82,6 +94,17 @@ def load_config(root):
         with open(path, "rb") as f: data = tomllib.load(f)
     except ImportError:
         data = _parse_toml_naive(path)
+    
+    # Handle profile selection
+    profile = data.get("profile")
+    if profile and isinstance(profile, str):
+        profile_key = f"profile.{profile}"
+        if profile_key in DEFAULT_CONFIG:
+            profile_cfg = DEFAULT_CONFIG[profile_key]
+            for section, kv in profile_cfg.items():
+                if isinstance(kv, dict):
+                    cfg.setdefault(section, {}).update(kv)
+    
     for section, kv in data.items():
         if isinstance(kv, dict):
             cfg.setdefault(section, {}).update(kv)

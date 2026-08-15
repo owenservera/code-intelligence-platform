@@ -29,6 +29,8 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
     {"name": "route", "description": "Intent analysis: best CIP operations for a request.",
      "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+    {"name": "route_for_agent", "description": "Agent-aware routing with capability-scoped tool names and confidence scores.",
+     "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
     {"name": "git_index", "description": "Refresh commit index (modified_by, co_change, hotspots).",
      "inputSchema": {"type": "object", "properties": {"depth": {"type": "integer"}}}},
     {"name": "index_status", "description": "Index freshness, coverage and stats.",
@@ -135,6 +137,8 @@ def call_tool(root, cfg, name, args):
             res = retrieve.history(root, args.get("path", ""))
         elif name == "route":
             res = router.route(args.get("query", ""))
+        elif name == "route_for_agent":
+            res = router.route_for_agent(args.get("query", ""))
         elif name == "git_index":
             res = gitindex.git_index(root, depth=int(args.get("depth", cfg["git"]["depth"])))
         elif name == "audit":

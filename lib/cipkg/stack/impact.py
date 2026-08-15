@@ -74,6 +74,45 @@ def impact(root=None, target="", depth=2):
             "open_findings_in_area": findings_hit,
             "hotspot_heat": round(heat, 1), "advice": advice}
 
+def impact_structured(root=None, target="", depth=2):
+    """Return impact analysis in structured format for todo integration.
+    
+    Returns format that can be converted to agent todo items:
+    - untested_files: files with no test coverage
+    - high_risk_files: files with high blast radius
+    - critical_findings: critical audit findings in affected area
+    """
+    result = impact(root, target, depth)
+    
+    if "error" in result:
+        return result
+    
+    # Extract structured data for todo integration
+    untested_files = []
+    high_risk_files = []
+    
+    for file_path in result.get("affected_files", []):
+        # Check if file has test coverage
+        has_test = any(test.startswith(file_path) or file_path.startswith(test) 
+                       for test in result.get("tests_to_run", []))
+        if not has_test:
+            untested_files.append(file_path)
+        
+        # High risk if in hotspot area
+        if result.get("hotspot_heat", 0) > 1.0:
+            high_risk_files.append(file_path)
+    
+    return {
+        "target": target,
+        "risk": result.get("risk"),
+        "untested_files": untested_files[:10],
+        "high_risk_files": high_risk_files[:10],
+        "critical_findings_count": result.get("open_findings_in_area", 0),
+        "routes_affected_count": len(result.get("routes_affected", [])),
+        "tests_to_run": result.get("tests_to_run", [])[:10],
+        "advice": result.get("advice", [])
+    }
+
 def impact_diff(root=None, ref="HEAD"):
     root = root or repo_root()
     try:

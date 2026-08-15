@@ -78,8 +78,63 @@ def _ensure_embedded(con, cfg):
     if row and row["c"] > 0:
         indexer.embed_pending(con, cfg, batch=64)
 
+def _external_search(root, cfg, query, k):
+    """Defer search to external tool (e.g., Vivim's code-index.ts)."""
+    external_cfg = cfg.get("external_search", {})
+    defer_to = external_cfg.get("defer_to")
+    
+    if not defer_to:
+        return None
+    
+    args_template = external_cfg.get("args", ["{query}"])
+    args = [arg.replace("{query}", query) for arg in args_template]
+    
+    try:
+        result = subprocess.run(
+            [defer_to] + args,
+            capture_output=True,
+            text=True,
+            cwd=root,
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            return None
+        
+        # Parse external tool output (assumes JSON format)
+        import json
+        external_results = json.loads(result.stdout)
+        
+        # Convert external results to CIP format
+        items = []
+        for ext_item in external_results[:k]:
+            items.append({
+                "chunk": ext_item.get("id", ""),
+                "path": ext_item.get("path", ""),
+                "lines": ext_item.get("lines", [0, 0]),
+                "symbol": ext_item.get("symbol", ""),
+                "score": ext_item.get("score", 0.5),
+                "matched": ["external"],
+                "snippet": ext_item.get("snippet", ""),
+                "tier": ext_item.get("tier", "code")
+            })
+        
+        return items
+        
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        # Fall back to internal search if external fails
+        return None
+
 def search(root=None, query="", k=10):
     root = root or repo_root(); cfg = load_config(root); con = connect(root)
+    
+    # Check if external search is configured
+    external_results = _external_search(root, cfg, query, k)
+    if external_results is not None:
+        # Layer CIP's audit/impact annotations on external results
+        return rerank(query, external_results, con, cfg)[:k]
+    
+    # Standard internal search
     _ensure_embedded(con, cfg)
     lex = lex_search(con, query, int(cfg["retrieval"]["lexical_k"]))
     vec = vec_search(con, cfg, query, int(cfg["retrieval"]["vector_k"]))
@@ -215,6 +270,8 @@ def context(root=None, query=None, symbol=None, budget=None):
         if used + t > budget and packed: break
         packed.append(s); used += t
     return {"seed": seed, "budget_tokens": budget, "used_tokens": used,
+            "tokens_remaining": budget - used,
+            "budget_utilization": round(used / budget * 100, 1) if budget > 0 else 0,
             "sections": [{"why": s["why"], "meta": s["meta"], "text": s["text"]} for s in packed],
             "next_ops": next_ops[:6]}
 

@@ -2,6 +2,9 @@
 import argparse, json, os, shutil, sys, time
 
 from . import gapfill
+from .hooks import install_agent_hooks, run_hook_command
+from .session import session_start, session_end, get_active_session
+from .verify import verify, verification_gate
 
 HOOKS = ("post-commit", "post-merge", "post-checkout")
 MARK = "# >>> cip >>>"
@@ -83,6 +86,207 @@ def handle_embed_command(root, args):
     from . import indexer
     _out(indexer.embed_pending(connect(root), load_config(root), batch=args.batch, progress=_progress))
 
+def handle_hook_command(root, args):
+    """Handle agent integration hook commands."""
+    hook_args = [args.hook_type] + args.args
+    result = run_hook_command(hook_args)
+    _out(result)
+
+def handle_audit_command(root, args):
+    """Handle audit command with file/diff scoping."""
+    from .stack import audit as stack_audit
+    if hasattr(args, 'file') and args.file:
+        result = stack_audit.audit_file(root, args.file)
+    elif hasattr(args, 'diff') and args.diff:
+        result = stack_audit.audit_diff(root)
+    else:
+        result = stack_audit.audit(root, refresh=True)
+    _out(result)
+
+def handle_findings_command(root, args):
+    """Handle findings command with structured output option."""
+    from .stack import audit as stack_audit
+    if hasattr(args, 'structured') and args.structured:
+        result = stack_audit.findings_structured(
+            root, getattr(args, 'severity', None), getattr(args, 'rule', None), 
+            getattr(args, 'path', None), getattr(args, 'limit', 100))
+    else:
+        result = stack_audit.findings(
+            root, getattr(args, 'severity', None), getattr(args, 'rule', None), 
+            getattr(args, 'path', None), getattr(args, 'limit', 100))
+    _out(result)
+
+def handle_impact_command(root, args):
+    """Handle impact command with structured output option."""
+    from .stack import impact as stack_impact
+    if hasattr(args, 'structured') and args.structured:
+        result = stack_impact.impact_structured(
+            root, getattr(args, 'target', ''), getattr(args, 'depth', 2))
+    elif hasattr(args, 'ref') and args.ref:
+        result = stack_impact.impact_diff(root, args.ref)
+    else:
+        result = stack_impact.impact(root, getattr(args, 'target', ''), getattr(args, 'depth', 2))
+    _out(result)
+
+# Add simple pass-through handlers for other commands as needed
+def handle_init_command(root, args):
+    cmd_init(root)
+
+def handle_upgrade_command(root, args):
+    cmd_upgrade(root)
+
+def handle_detect_command(root, args):
+    from . import detect
+    cfg = load_config(root)
+    _out(detect.detect(root, cfg))
+
+def handle_index_command(root, args):
+    from . import indexer
+    _out(indexer.sync(root, full=getattr(args, 'full', False), do_embed=getattr(args, 'reembed', False), progress=_progress))
+
+def handle_sync_command(root, args):
+    cmd_sync(root)
+
+def handle_watch_command(root, args):
+    from .watch import watch
+    watch(root, interval=getattr(args, 'interval', 1.0))
+
+def handle_daemon_command(root, args):
+    if getattr(args, 'daemon_cmd', None) == "status":
+        cmd_daemon_status(root)
+    elif getattr(args, 'daemon_cmd', None) == "stop":
+        cmd_daemon_stop(root)
+    else:
+        cmd_daemon_start(root, getattr(args, 'port', 8787), getattr(args, 'interval', 1.0))
+
+def handle_search_command(root, args):
+    from . import retrieve
+    _out({"results": retrieve.search(root, getattr(args, 'query', ''), k=getattr(args, 'k', 10))})
+
+def handle_symbol_command(root, args):
+    from . import retrieve
+    _out({"symbols": retrieve.find_symbol(root, getattr(args, 'name', ''))})
+
+def handle_graph_command(root, args):
+    from . import retrieve
+    _out(retrieve.graph(root, getattr(args, 'id', ''), getattr(args, 'direction', 'both'), getattr(args, 'depth', 1)))
+
+def handle_context_command(root, args):
+    from . import retrieve
+    _out(retrieve.context(root, getattr(args, 'query', None), getattr(args, 'symbol', None), getattr(args, 'budget', None)))
+
+def handle_summary_command(root, args):
+    from . import summarize
+    _out(summarize.summary(root, getattr(args, 'path', None)))
+
+def handle_broken_command(root, args):
+    from .runtime_adapters import broken
+    _out(broken(root))
+
+def handle_hotspots_command(root, args):
+    from . import gitindex
+    _out({"hotspots": gitindex.hotspots(root)})
+
+def handle_history_command(root, args):
+    from . import retrieve
+    _out(retrieve.history(root, getattr(args, 'path', '')))
+
+def handle_route_command(root, args):
+    from . import router
+    if getattr(args, 'agent', False):
+        _out(router.route_for_agent(getattr(args, 'query', '')))
+    else:
+        _out(router.route(getattr(args, 'query', '')))
+
+def handle_git_index_command(root, args):
+    from . import gitindex
+    _out(gitindex.git_index(root, depth=getattr(args, 'depth', None)))
+
+def handle_ingest_command(root, args):
+    from .ingest import ingest
+    _out(ingest(root, getattr(args, 'kind', ''), getattr(args, 'file', '-')))
+
+def handle_export_command(root, args):
+    from .export import export
+    _out(export(root, getattr(args, 'format', 'json'), getattr(args, 'out', None)))
+
+def handle_doctor_command(root, args):
+    cmd_doctor(root)
+
+def handle_serve_command(root, args):
+    from .server import serve
+    serve(root, getattr(args, 'port', None))
+
+def handle_mcp_command(root, args):
+    from .server import mcp_main
+    mcp_main()
+
+def handle_tools_command(root, args):
+    from .server import TOOLS
+    if getattr(args, 'schema', False):
+        _out({"tools": TOOLS})
+    else:
+        for t in TOOLS:
+            print(f"{t['name']}: {t['description']}")
+
+def handle_selftest_command(root, args):
+    from .selftest import selftest
+    _out(selftest(root))
+
+def handle_export_command(root, args):
+    from .export import export
+    _out(export(root, args.format, args.out))
+
+def handle_doctor_command(root, args):
+    cmd_doctor(root)
+
+def handle_serve_command(root, args):
+    from .server import serve
+    serve(root, args.port)
+
+def handle_mcp_command(root, args):
+    from .server import mcp_main
+    mcp_main()
+
+def handle_tools_command(root, args):
+    from .server import TOOLS
+    if args.schema:
+        _out({"tools": TOOLS})
+    else:
+        for t in TOOLS:
+            print(f"{t['name']}: {t['description']}")
+
+def handle_selftest_command(root, args):
+    from .selftest import selftest
+    _out(selftest(root))
+
+def handle_session_command(root, args):
+    """Handle session management commands."""
+    if args.session_cmd == "start":
+        result = session_start(root)
+    elif args.session_cmd == "end":
+        result = session_end(root)
+    elif args.session_cmd == "status":
+        result = get_active_session(root) or {"error": "No active session"}
+    else:
+        result = {"error": f"Unknown session command: {args.session_cmd}"}
+    _out(result)
+
+def handle_verify_command(root, args):
+    """Handle verification gate command."""
+    result = verify(
+        root, 
+        typecheck=getattr(args, 'typecheck', False),
+        lint=getattr(args, 'lint', False),
+        audit_check=not getattr(args, 'no_audit', False)
+    )
+    
+    if getattr(args, 'blocking', False) and not result["can_proceed"]:
+        _out(result)
+        return 1
+    
+    _out(result)
+
 # ── commands ─────────────────────────────────────────────────────────────────
 
 def cmd_init(root):
@@ -92,12 +296,25 @@ def cmd_init(root):
     _desc("Setting up CIP for this project (one-time setup)")
     cipd = os.path.join(root, ".cip")
     os.makedirs(os.path.join(cipd, "data"), exist_ok=True)
-    src, dst = os.path.join(cipd, "bootstrap", "AGENTS.md"), os.path.join(root, "AGENTS.md")
-    if os.path.exists(src) and not os.path.exists(dst):
-        shutil.copy(src, dst)
-        print("created %s" % dst)
+    
+    # Copy AGENTS.md template if it doesn't exist
+    agents_src = os.path.join(os.path.dirname(__file__), "templates", "AGENTS.md")
+    agents_dst = os.path.join(root, "AGENTS.md")
+    if os.path.exists(agents_src) and not os.path.exists(agents_dst):
+        shutil.copy(agents_src, agents_dst)
+        print("created %s" % agents_dst)
+    
     _install_hooks(root)
     _ensure_gitignore(root)
+    
+    # Install agent hooks for common agent types
+    _desc("Installing agent integration hooks")
+    for agent_type in ["claude-code", "opencode"]:
+        result = install_agent_hooks(root, agent_type)
+        if result.get("ok"):
+            print("installed %s hooks: %s" % (agent_type, result.get("config_path")))
+        else:
+            print("skipped %s hooks: %s" % (agent_type, result.get("error", "unknown")))
     cfg = load_config(root)
     _desc("Detecting project type (languages, frameworks, stacks)")
     det = detect.detect(root, cfg)
@@ -349,17 +566,21 @@ def setup_argument_parser():
     sub.add_parser("selftest")
 
     # v1.1 stack pack
-    sub.add_parser("audit")
+    ap = sub.add_parser("audit")
+    ap.add_argument("--file", help="scope audit to single file")
+    ap.add_argument("--diff", action="store_true", help="scope audit to git diff")
     fp = sub.add_parser("findings")
     fp.add_argument("--severity")
     fp.add_argument("--rule")
     fp.add_argument("--path")
     fp.add_argument("--limit", type=int, default=100)
+    fp.add_argument("--structured", action="store_true", help="return machine-actionable format")
     sub.add_parser("refactors", help="top quick-win refactors")
     mp2 = sub.add_parser("impact")
     mp2.add_argument("target", nargs="?")
     mp2.add_argument("--ref")
     mp2.add_argument("--depth", type=int, default=2)
+    mp2.add_argument("--structured", action="store_true", help="return structured format for todo integration")
     sub.add_parser("routes")
     sub.add_parser("models")
     sub.add_parser("gate", help="quality gate: exit 1 on critical findings")
@@ -402,6 +623,25 @@ def setup_argument_parser():
     # v1.8 intelligent repo analysis
     sub.add_parser("analyze", help="comprehensive repository analysis with actionable insights")
 
+    # agent integration hooks
+    hp = sub.add_parser("hook", help="agent integration hooks (post-edit, pre-edit)")
+    hp.add_argument("hook_type", choices=["post-edit", "pre-edit"])
+    hp.add_argument("args", nargs="+", help="hook-specific arguments")
+
+    # session management
+    sp = sub.add_parser("session", help="agent session management")
+    session_sub = sp.add_subparsers(dest="session_cmd")
+    session_sub.add_parser("start", help="start session with repo context")
+    session_sub.add_parser("end", help="end session and collect learning data")
+    session_sub.add_parser("status", help="show active session status")
+
+    # verification gate
+    vp = sub.add_parser("verify", help="verification gate: broken tests + typecheck + lint + audit")
+    vp.add_argument("--typecheck", action="store_true", help="run typecheck as part of verification")
+    vp.add_argument("--lint", action="store_true", help="run lint as part of verification")
+    vp.add_argument("--no-audit", action="store_true", help="skip audit check")
+    vp.add_argument("--blocking", action="store_true", help="exit 1 if verification fails")
+
     # v1.2 durability
     sub.add_parser("rebuild", help="wipe and fully reindex")
     vf = sub.add_parser("verify", help="check index vs disk drift"); vf.add_argument("--repair", action="store_true")
@@ -437,6 +677,12 @@ def dispatch_command(root, args):
         "serve": handle_serve_command,
         "mcp": handle_mcp_command,
         "tools": handle_tools_command,
+        "hook": handle_hook_command,
+        "audit": handle_audit_command,
+        "findings": handle_findings_command,
+        "impact": handle_impact_command,
+        "session": handle_session_command,
+        "verify": handle_verify_command,
         "selftest": handle_selftest_command,
         "audit": handle_audit_command,
         "findings": handle_findings_command,

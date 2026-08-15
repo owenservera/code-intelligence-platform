@@ -156,6 +156,68 @@ def rule_db_schema_drift(con, root, cfg):
                   effort="trivial")]
     return []
 
+def rule_db_migration_index_drift(con, root, cfg):
+    """Detect indexes referenced in migrations but missing from current schema.
+    
+    This catches schema drift where migrations created indexes that were later
+    removed from schema.prisma, potentially causing unexpected query performance.
+    """
+    from .prisma import find_schema, parse_schema
+    rel = find_schema(root)
+    if not rel: return []
+    
+    sp = os.path.join(root, rel)
+    mdir = os.path.join(os.path.dirname(sp), "migrations")
+    if not os.path.isdir(mdir): return []
+    
+    # Parse current schema
+    current_models = parse_schema(_read(root, rel))
+    current_indexes = {}
+    for model_name, model_data in current_models.items():
+        indexes = model_data.get("indexes", [])
+        current_indexes[model_name] = set()
+        for idx in indexes:
+            if isinstance(idx, list):
+                current_indexes[model_name].update(idx)
+    
+    # Scan migration files for index references
+    migration_indexes = {}
+    for dirpath, dirnames, filenames in os.walk(mdir):
+        for filename in filenames:
+            if not filename.endswith(".sql"):
+                continue
+                
+            migration_path = os.path.join(dirpath, filename)
+            try:
+                content = open(migration_path, encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+                
+            # Look for CREATE INDEX statements
+            for match in re.finditer(r'CREATE\s+(?:UNIQUE\s+)?INDEX\s+[^\s]+\s+ON\s+(\w+)\s*\(([^)]+)\)', content, re.IGNORECASE):
+                table = match.group(1)
+                columns = [col.strip() for col in match.group(2).split(',')]
+                migration_indexes.setdefault(table, set()).update(columns)
+    
+    # Compare and report drift
+    findings = []
+    for table, mig_cols in migration_indexes.items():
+        if table not in current_indexes:
+            findings.append(F("DB-MIGRATION-INDEX-DRIFT", "medium", rel,
+                           f"Table '{table}' has indexes in migrations but missing from current schema",
+                           detail=f"Migration indexes: {sorted(mig_cols)}",
+                           suggestion=f"Add missing indexes to {table} model or remove orphaned migration files.",
+                           effort="small"))
+        else:
+            missing_cols = mig_cols - current_indexes[table]
+            if missing_cols:
+                findings.append(F("DB-MIGRATION-INDEX-DRIFT", "medium", rel,
+                               f"Table '{table}' missing columns in schema that exist in migrations: {sorted(missing_cols)}",
+                               suggestion="Add missing @@index() or remove orphaned migration references.",
+                               effort="small"))
+    
+    return findings[:20]
+
 # ---------------- security / env ----------------
 
 SECRET_RES = [
@@ -414,6 +476,57 @@ def rule_orphan_file(con, root, cfg):
                      effort="trivial"))
     return out[:100]
 
+# ---------------- tauri ----------------
+
+def rule_tauri_ungated_command(con, root, cfg):
+    """Flag Tauri commands that have no capability grant (security risk)."""
+    # Check if Tauri is present in the project
+    tauri_dirs = ["src-tauri", "tauri", ".tauri"]
+    has_tauri = any(os.path.isdir(os.path.join(root, d)) for d in tauri_dirs)
+    
+    if not has_tauri:
+        return []
+    
+    # Ensure Tauri tables exist
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS tauri_commands (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            args TEXT,
+            file TEXT,
+            line INTEGER,
+            is_allowed INTEGER DEFAULT 0
+        )
+    """)
+    
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS tauri_capabilities (
+            id INTEGER PRIMARY KEY,
+            command TEXT NOT NULL UNIQUE
+        )
+    """)
+    
+    # Index Tauri commands if not already done
+    if con.execute("SELECT COUNT(*) c FROM tauri_commands").fetchone()["c"] == 0:
+        try:
+            from .tauri import index_stack
+            index_stack(con, root)
+        except ImportError:
+            return []
+    
+    out = []
+    rows = con.execute("SELECT name, file, line FROM tauri_commands WHERE is_allowed = 0").fetchall()
+    
+    for r in rows:
+        out.append(F("TAURI-UNGATED-COMMAND", "high", r["file"],
+                     f"Tauri command '{r['name']}' has no capability grant",
+                     detail=f"Command defined at line {r['line']} is not in any capability manifest",
+                     suggestion="Add the command to a capability manifest in src-tauri/capabilities/ or remove if unused.",
+                     effort="small",
+                     line=r["line"]))
+    
+    return out[:50]
+
 RULES = [
     ("SEC-HARDCODED-SECRET", rule_secrets), ("SEC-SQL-RAW", rule_sql_raw),
     ("ENV", rule_env),
@@ -422,6 +535,7 @@ RULES = [
     ("DB-NO-AWAIT", rule_db_no_await),
     ("DB-DESTRUCTIVE-MIGRATION", rule_db_destructive_migration),
     ("DB-SCHEMA-DRIFT", rule_db_schema_drift),
+    ("DB-MIGRATION-INDEX-DRIFT", rule_db_migration_index_drift),
     ("HIDDEN-EXPORT", rule_hidden_export), ("HIDDEN-ROUTE", rule_hidden_route),
     ("HIDDEN-MODEL", rule_hidden_model),
     ("NEXT-ROUTE-NO-ERROR", rule_route_no_error),
@@ -432,12 +546,18 @@ RULES = [
     ("QA-UNTESTED-HOT", rule_qa_untested_hot),
     ("ARCH-LAYER-VIOLATION", rule_layer_violation),
     ("ARCH-ORPHAN-FILE", rule_orphan_file),
+    ("TAURI-UNGATED-COMMAND", rule_tauri_ungated_command),
 ]
 
 def run_rules(con, root, cfg):
+    from .custom_rules import get_all_rules
     skip = set(cfg.get("audit", {}).get("ignore_rules", []))
     findings = []
-    for rid, fn in RULES:
+    
+    # Get both built-in and custom rules
+    all_rules = get_all_rules(root, cfg)
+    
+    for rid, fn in all_rules:
         if rid in skip: continue
         try:
             findings.extend(fn(con, root, cfg))
