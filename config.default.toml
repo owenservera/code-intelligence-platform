@@ -4,9 +4,11 @@ exclude = []
 test_globs = ["test_", "_test.", ".test.", ".spec.", "/tests/", "__tests__"]
 
 [embed]
-backend = "local"           # local | auto | hashing | sentence-transformers
+backend = "auto"           # auto | service | local | hashing
 model = "BAAI/bge-small-en-v1.5"
 dim = 384
+service_port = 8787        # where the warm model lives
+autostart = true           # launch the daemon automatically if it's down
 
 [retrieval]
 lexical_k = 30
@@ -31,6 +33,13 @@ enabled = true
 
 [vector]
 backend = "sqlite"          # sqlite | sqlite-vec (experimental)
+
+# ---- v2 performance ----
+[perf]
+workers = 0                 # 0 = auto (cpu_count); 1 = serial; N = explicit process count
+
+[maintain]
+event_days = 30
 
 # ---- v1.1 stack pack ----
 [audit]

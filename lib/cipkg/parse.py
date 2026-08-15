@@ -83,6 +83,15 @@ def extract_imports(source, language):
     return out
 
 def parse_file(path, language, source):
+    from . import tree_parser
+    key = "tsx" if path.endswith(".tsx") else language
+    if tree_parser.available(key):
+        try:
+            r = tree_parser.parse(path, source, language)
+            if r: return r
+        except Exception:
+            pass
+    # ... existing regex logic below unchanged ...
     lines = source.splitlines()
     rules = RULES.get(language, GENERIC)
     indent_lang = language in INDENT_LANGS

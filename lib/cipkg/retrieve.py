@@ -10,14 +10,28 @@ def _fts_query(q):
     toks = re.findall(r"[A-Za-z0-9_$]+", q)
     return " ".join(f'"{t}"' for t in toks[:8])
 
+def _tok_query(q):
+    from .base import tokenize
+    return " ".join(f'"{t}"' for t in tokenize(q)[:8])
+
 def lex_search(con, query, k=30):
+    fq = _tok_query(query)
+    if not fq:
+        return []
+    if get_meta(con, "tok_built") == "1":
+        try:
+            rows = con.execute(
+                "SELECT c.id, c.path, c.symbol_id, c.start_line, c.end_line, substr(c.text,1,360) snip "
+                "FROM chunks_fts2 f JOIN chunks c ON c.rowid=f.rowid "
+                "WHERE chunks_fts2 MATCH ? ORDER BY rank LIMIT ?", (fq, k)).fetchall()
+            if rows: return [dict(r) for r in rows]
+        except Exception:
+            pass
     if get_meta(con, "fts") != "1":
         rows = con.execute("SELECT id, path, symbol_id, start_line, end_line, "
                            "substr(text,1,360) snip FROM chunks WHERE text LIKE ? LIMIT ?",
                            (f"%{query}%", k)).fetchall()
         return [dict(r) for r in rows]
-    fq = _fts_query(query)
-    if not fq: return []
     try:
         rows = con.execute(
             "SELECT c.id, c.path, c.symbol_id, c.start_line, c.end_line, substr(c.text,1,360) snip "
@@ -56,18 +70,29 @@ def rrf(ranked_lists, k=60):
             srcs.setdefault(cid, []).append(name)
     return [(cid, s, srcs[cid]) for cid, s in sorted(scores.items(), key=lambda kv: -kv[1])]
 
+def _ensure_embedded(con, cfg):
+    """Auto-embed chunks if none exist yet. Silent, one-time."""
+    from . import indexer
+    row = con.execute("SELECT COUNT(*) c FROM chunks c LEFT JOIN vectors v "
+                      "ON v.id=c.id WHERE v.id IS NULL").fetchone()
+    if row and row["c"] > 0:
+        indexer.embed_pending(con, cfg, batch=64)
+
 def search(root=None, query="", k=10):
     root = root or repo_root(); cfg = load_config(root); con = connect(root)
+    _ensure_embedded(con, cfg)
     lex = lex_search(con, query, int(cfg["retrieval"]["lexical_k"]))
     vec = vec_search(con, cfg, query, int(cfg["retrieval"]["vector_k"]))
     items = []
     for cid, score, srcs in rrf([lex, vec])[:max(k * 3, 30)]:
-        c = con.execute("SELECT path, symbol_id, start_line, end_line, substr(text,1,360) snip "
-                        "FROM chunks WHERE id=?", (cid,)).fetchone()
+        c = con.execute("SELECT c.path, c.symbol_id, c.start_line, c.end_line, "
+                        "substr(c.text,1,360) snip, f.tier "
+                        "FROM chunks c LEFT JOIN files f ON f.path=c.path WHERE c.id=?", (cid,)).fetchone()
         if not c: continue
         items.append({"chunk": cid, "path": c["path"],
                       "lines": [c["start_line"], c["end_line"]], "symbol": c["symbol_id"],
-                      "score": round(score, 5), "matched": srcs, "snippet": c["snip"]})
+                      "score": round(score, 5), "matched": srcs, "snippet": c["snip"],
+                      "tier": c["tier"] or "code"})
     return rerank(query, items, con, cfg)[:k]
 
 def edge_counts(con, sid):

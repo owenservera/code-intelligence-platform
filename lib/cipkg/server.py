@@ -168,6 +168,15 @@ def serve(root=None, port=None):
     root = root or repo_root(); cfg = load_config(root)
     port = port or int(cfg["serve"]["port"])
 
+    from . import embed as E
+    SERVE_STATE = {}
+    print("cip: pre-warming embedding model...")
+    _t = time.time()
+    SERVE_STATE["emb"] = E._cached(("local", cfg["embed"].get("model", E.MODEL_NAME)),
+                                   lambda: E.build_local_embedder(cfg))
+    SERVE_STATE["t0"] = time.time()
+    print(f"cip: model WARM in {int((time.time()-_t)*1000)}ms -- holding resident")
+
     class H(BaseHTTPRequestHandler):
         def _send(self, obj, code=200):
             body = json.dumps(obj, default=str).encode()
@@ -184,9 +193,23 @@ def serve(root=None, port=None):
             elif self.path == "/ontology.json":
                 p = os.path.join(cip_dir(root), "ontology.json")
                 self._send(json.load(open(p)) if os.path.exists(p) else {})
+            elif self.path == "/embed/health":
+                emb = SERVE_STATE.get("emb")
+                return self._send({"warm": emb is not None,
+                                   "model": getattr(emb, "name", None),
+                                   "dim": getattr(emb, "dim", None),
+                                   "pid": os.getpid(),
+                                   "uptime_s": round(time.time() - SERVE_STATE.get("t0", time.time()), 1)})
             else:
                 self._send({"ok": False, "error": "not found"}, 404)
         def do_POST(self):
+            if self.path == "/embed":
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(n) or b"{}")
+                emb = SERVE_STATE["emb"]
+                vecs = emb.embed(body.get("texts", []))
+                return self._send({"vectors": vecs, "model": emb.name,
+                                   "dim": emb.dim, "n": len(vecs)})
             n = int(self.headers.get("Content-Length", 0))
             try:
                 req = json.loads(self.rfile.read(n) or b"{}")
@@ -209,6 +232,9 @@ def serve(root=None, port=None):
 
 def mcp_stdio(root=None):
     root = root or repo_root(); cfg = load_config(root)
+    import threading
+    from .embed import get_embedder
+    threading.Thread(target=lambda: get_embedder(cfg, root), daemon=True).start()
     print("cip: MCP stdio server ready", file=sys.stderr)
     for line in sys.stdin:
         line = line.strip()

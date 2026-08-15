@@ -96,6 +96,29 @@ class StackPack(unittest.TestCase):
         self.assertNotIn("error", r)
         self.assertIn("lib/users.ts", r["affected_files"])
 
+    def test_read_function(self):
+        """Test _read helper function for file reading."""
+        from . import rules
+        # Test reading existing file
+        content = rules._read(self.root, "lib/config.ts")
+        self.assertIn("stripeKey", content)
+        # Test reading non-existent file
+        content = rules._read(self.root, "nonexistent.ts")
+        self.assertEqual(content, "")
+
+    def test_ts_files_function(self):
+        """Test _ts_files helper function for TypeScript file detection."""
+        from . import rules
+        from ..store import connect
+        con = connect(self.root)
+        ts_files = rules._ts_files(con)
+        self.assertIsInstance(ts_files, list)
+        # Should find TypeScript files in our test repo
+        self.assertGreater(len(ts_files), 0)
+        # All should be .ts or .tsx files
+        for f in ts_files:
+            self.assertTrue(f.endswith('.ts') or f.endswith('.tsx'))
+
 def run_stack_selftest():
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(StackPack)
     res = unittest.TextTestRunner(verbosity=2).run(suite)

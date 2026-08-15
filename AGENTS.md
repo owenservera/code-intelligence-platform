@@ -1,4 +1,4 @@
-# AGENTS.md — Code Intelligence Bootstrap (CIP v1.1 + Stack Pack)
+# AGENTS.md — Code Intelligence Bootstrap (CIP v1.2 + Stack Pack)
 
 This repository runs **CIP**: a continuously updated model of the codebase —
 structure, history, tests, runtime health, and a semantic audit layer for the
@@ -10,6 +10,8 @@ TS/Next.js/Prisma/SQLite stack. Do NOT read the whole repo. Interrogate the inde
 3. `cip impact <file>`      → blast radius BEFORE editing (dependents, routes, tests, risk)
 4. `cip context "<intent>"` → budgeted pack: code + summary + relations + tests + failures
 5. Read exact source only where the index points.
+- Identifier search is camelCase-aware: `cip search Transport` matches MCPTransportManager.
+- Results carry a `tier` (code|doc|config) — docs answer "why/how", code answers "where".
 
 ## Quality & DevOps (this repo is stack-audited)
 - `cip audit`      → refresh findings (secrets, N+1, missing indexes, client leaks…)

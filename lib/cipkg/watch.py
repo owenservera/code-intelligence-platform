@@ -2,10 +2,11 @@
 import os, time
 
 def _snapshot(root):
-    from .base import load_config, iter_files
+    from .base import load_config
+    from .gatekeeper import iter_files_smart
     cfg = load_config(root)
     out = {}
-    for rel in iter_files(root, cfg):
+    for rel, _tier, _why in iter_files_smart(root, cfg):
         try: out[rel] = os.path.getmtime(os.path.join(root, rel))
         except OSError: pass
     return out

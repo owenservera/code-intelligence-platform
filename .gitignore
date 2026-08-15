@@ -1,10 +1,28 @@
 # CIP index data (repo-specific)
 .cip/data/
+.cip/config.toml
+.cip/ontology.json
 
 # Python
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
 
-# Config files (generated per-repo)
-.cip/config.toml
-.cip/ontology.json
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/

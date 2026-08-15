@@ -13,7 +13,8 @@ DEFAULT_EXCLUDES = {
 DEFAULT_CONFIG = {
     "index": {"max_file_kb": 512, "exclude": [],
               "test_globs": ["test_", "_test.", ".test.", ".spec.", "/tests/", "__tests__"]},
-    "embed": {"backend": "local", "model": "BAAI/bge-small-en-v1.5", "dim": 384},
+    "embed": {"backend": "auto", "model": "BAAI/bge-small-en-v1.5", "dim": 384,
+              "service_port": 8787, "autostart": True},
     "retrieval": {"lexical_k": 30, "vector_k": 30, "context_budget_tokens": 6000},
     "serve": {"port": 8787},
     # ---- v1.0 additions ----
@@ -21,6 +22,9 @@ DEFAULT_CONFIG = {
     "git": {"depth": 500, "co_change_min": 2},
     "rerank": {"enabled": True},
     "vector": {"backend": "sqlite"},        # sqlite | sqlite-vec
+    # ---- v2 performance ----
+    "perf": {"workers": 0},                 # 0=auto (cpu_count); 1=serial; N=explicit
+    "maintain": {"event_days": 30},
 }
 
 def repo_root(start=None):
@@ -88,20 +92,38 @@ def _excluded(rel_dir, name, extra):
     return any(pat in rel for pat in extra)
 
 def iter_files(root, cfg):
+    """Yield relative paths of indexable-size files. Uses os.scandir so the
+    file size comes from the already-cached directory entry (one syscall per
+    file instead of walk + a separate stat/getsize — important on Windows)."""
     maxb = int(cfg["index"]["max_file_kb"]) * 1024
     extra = list(cfg["index"]["exclude"])
-    for dirpath, dirnames, filenames in os.walk(root):
-        rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
-        dirnames[:] = [d for d in dirnames
-                       if d not in DEFAULT_EXCLUDES and not _excluded(rel_dir, d, extra)]
-        for fn in filenames:
-            if _excluded(rel_dir, fn, extra): continue
-            ap = os.path.join(dirpath, fn)
-            try:
-                if os.path.getsize(ap) > maxb: continue
-            except OSError:
-                continue
-            yield fn if rel_dir == "." else f"{rel_dir}/{fn}"
+    root = os.path.abspath(root)
+    stack = [root]
+    while stack:
+        dirpath = stack.pop()
+        try:
+            with os.scandir(dirpath) as it:
+                for e in it:
+                    if e.is_dir(follow_symlinks=False):
+                        if e.name in DEFAULT_EXCLUDES:
+                            continue
+                        rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
+                        if _excluded(rel_dir, e.name, extra):
+                            continue
+                        stack.append(e.path)
+                    elif e.is_file(follow_symlinks=False):
+                        rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
+                        if _excluded(rel_dir, e.name, extra):
+                            continue
+                        try:
+                            sz = e.stat(follow_symlinks=False).st_size
+                        except OSError:
+                            continue
+                        if sz > maxb:
+                            continue
+                        yield e.name if rel_dir == "." else f"{rel_dir}/{e.name}"
+        except OSError:
+            continue
 
 def is_test_path(path, cfg):
     p = path.lower()

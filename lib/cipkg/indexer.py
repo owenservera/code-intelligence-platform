@@ -1,88 +1,192 @@
 """Incremental, content-hashed indexer with scoped edge rebuild and
-dependency-aware embedding refresh. This is the self-updating heart of CIP."""
+dependency-aware embedding refresh. This is the self-updating heart of CIP.
+
+v2 performance architecture
+---------------------------
+* File reading + symbol/chunk parsing is parallelised across worker processes
+  (Windows `spawn`-safe: the parse worker only receives path/source text, never
+  a DB connection or unpicklable tree-sitter objects).
+* All writes are batched with `executemany` -- a repo with tens of thousands of
+  symbols collapses into a handful of bulk statements per sync instead of one
+  INSERT per symbol/chunk.
+* Vector KNN is served from a cached matrix (see store.vector_matrix), so
+  repeated searches don't reload the whole embedding table.
+"""
 import os, re, time
-from .base import repo_root, load_config, iter_files, sha, is_test_path
-from .store import connect, get_meta, set_meta
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from .base import repo_root, load_config, sha, is_test_path, tokenize
+from .gatekeeper import iter_files_smart, chunk_markdown
+from .tsconfig import TSResolver
+from .store import (connect, get_meta, set_meta, bulk, bulk_delete_paths,
+                    invalidate_vectors)
 from .detect import lang_for
 from .parsers import parse_file
-from .parse import extract_imports
 from .embed import get_embedder, to_blob
+from .base import sha as _sha
 
 IDENT = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 STOP_NAMES = {"get", "set", "run", "init", "main", "test", "call", "apply", "handle",
-              "value", "data", "item", "result", "args", "kwargs", "self", "this",
-              "super", "error", "len", "range", "print", "console", "then", "catch",
-              "keys", "values", "push", "map", "filter", "reduce", "find", "name"}
+               "value", "data", "item", "result", "args", "kwargs", "self", "this",
+               "super", "error", "len", "range", "print", "console", "then", "catch",
+               "keys", "values", "push", "map", "filter", "reduce", "find", "name"}
 RES_EXTS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".py", ".rs", ".go")
 
-def resolve_import(src_path, spec, all_paths):
+_TS_RESOLVERS = {}
+def _get_ts_resolver(root):
+    if root not in _TS_RESOLVERS:
+        _TS_RESOLVERS[root] = TSResolver(root)
+    return _TS_RESOLVERS[root]
+
+def resolve_import(src_path, spec, all_paths, resolver=None):
     spec = spec.strip()
     if spec.startswith("."):
         base = os.path.normpath(os.path.join(os.path.dirname(src_path), spec)).replace(os.sep, "/")
-        cands = [base] + [base + e for e in RES_EXTS]
-        cands += [base + "/index" + e for e in RES_EXTS[:4]]
+        cands = [base] + [base + e for e in RES_EXTS] + [base + "/index" + e for e in RES_EXTS[:4]]
         for c in cands:
             if c in all_paths: return c
     elif re.fullmatch(r"[\w.]+", spec):
         base = spec.replace(".", "/")
         for c in (base + ".py", base + "/__init__.py"):
             if c in all_paths: return c
+    if resolver and resolver.enabled:                 # tsconfig aliases
+        for c in resolver.candidates(spec, src_path):
+            if c in all_paths: return c
     return None
 
-def index_file(con, path, source, h, size, mtime):
-    language = lang_for(path)
-    parsed = parse_file(path, language, source)
-    con.execute("DELETE FROM symbols WHERE path=?", (path,))
-    con.execute("DELETE FROM chunks WHERE path=?", (path,))
-    con.execute("DELETE FROM edges WHERE src_path=?", (path,))
-    con.execute("DELETE FROM file_imports WHERE path=?", (path,))
-    con.execute("DELETE FROM vectors WHERE id LIKE ?", (path + "#%",))
-    con.execute("INSERT OR REPLACE INTO files(path,language,size,lines,hash,mtime,indexed_at) "
-                "VALUES(?,?,?,?,?,?,?)",
-                (path, language, size, source.count("\n") + 1, h, mtime, time.time()))
-    for s in parsed["symbols"]:
-        con.execute("INSERT OR REPLACE INTO symbols"
-                    "(id,name,kind,path,start_line,end_line,signature,body_hash,body) "
-                    "VALUES(?,?,?,?,?,?,?,?,?)",
-                    (s["id"], s["name"], s["kind"], path, s["start"], s["end"],
-                     s["signature"], s["body_hash"], s["body"]))
-        con.execute("INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
-                    (path, s["id"], "contains", path))
-        if s["exported"]:
-            con.execute("INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
-                        (path, s["id"], "exports", path))
-    for c in parsed["chunks"]:
-        con.execute("INSERT OR REPLACE INTO chunks"
-                    "(id,path,symbol_id,start_line,end_line,text,text_hash) VALUES(?,?,?,?,?,?,?)",
-                    (c["id"], path, c.get("symbol_id"), c["start"], c["end"], c["text"], c["hash"]))
-    for spec in parsed["imports"]:
-        con.execute("INSERT INTO file_imports(path,spec) VALUES(?,?)", (path, spec))
+# -- parallel parse worker (top-level so ProcessPoolExecutor can pickle it) --
+
+def _parse_worker(job):
+    path, language, source, tier = job
+    if tier != "code":
+        return (path, None)
+    try:
+        return (path, parse_file(path, language, source))
+    except Exception:
+        return (path, None)
+
+# -- prepare (pure, picklable inputs) ------------------------------------------
+
+def prepare_file(rel, tier, source, h, size, mtime, parsed):
+    """Return a dict of rows to upsert for one file. No DB access here, so it
+    is safe to run inside a worker process."""
+    language = lang_for(rel)
+    lines = source.count("\n") + 1
+    file_row = (rel, language, size, lines, h, mtime, time.time(), tier)
+    symbols, sym_edges, chunks, imports, calls = [], [], [], [], []
+    if tier == "code" and parsed:
+        qmap = {s["qualname"]: s["id"] for s in parsed["symbols"]}
+        for s in parsed["symbols"]:
+            symbols.append((s["id"], s["name"], s["kind"], rel, s["start"],
+                            s["end"], s["signature"], s["body_hash"], s["body"]))
+            sym_edges.append((rel, s["id"], "contains", rel))
+            if s["exported"]:
+                sym_edges.append((rel, s["id"], "exports", rel))
+        for spec in parsed["imports"]:
+            imports.append((rel, spec))
+        for (caller_qual, callee) in (parsed.get("calls") or []):
+            sid = qmap.get(caller_qual)
+            if sid:
+                calls.append((sid, callee))
+        for c in parsed["chunks"]:
+            chunks.append((c["id"], rel, c.get("symbol_id"), c["start"], c["end"],
+                           c["text"], _sha(c["text"]), " ".join(tokenize(c["text"]))))
+    elif tier == "doc":
+        for c in chunk_markdown(rel, source):
+            chunks.append((c["id"], rel, None, c["start"], c["end"], c["text"],
+                           _sha(c["text"]), " ".join(tokenize(c["text"]))))
+    elif tier == "config":
+        text = "\n".join(source.splitlines()[:60])
+        end = min(60, max(1, source.count("\n") + 1))
+        chunks.append((f"{rel}#L1-L{end}", rel, None, 1, end, text,
+                       _sha(text), " ".join(tokenize(text))))
+    return {"file": file_row, "symbols": symbols, "sym_edges": sym_edges,
+            "chunks": chunks, "imports": imports, "calls": calls}
+
+def _noop():
+    return []
+
+def _bulk_write(con, prepared):
+    """Upsert a list of prepared file dicts in a few batched statements."""
+    if not prepared:
+        return
+    paths = [p["file"][0] for p in prepared]
+    chunk_ids = [c[0] for p in prepared for c in p["chunks"]]
+    sym_ids = [s[0] for p in prepared for s in p["symbols"]]
+    # 1. delete old rows for these files (chunk/vector fk first)
+    if chunk_ids:
+        bulk_delete_paths(con, "vectors", "id", chunk_ids)
+    if sym_ids:
+        bulk_delete_paths(con, "symbol_calls", "symbol_id", sym_ids)
+    bulk_delete_paths(con, "symbols", "path", paths)
+    bulk_delete_paths(con, "chunks", "path", paths)
+    bulk_delete_paths(con, "edges", "src_path", paths)
+    bulk_delete_paths(con, "file_imports", "path", paths)
+    # 2. insert
+    bulk(con, "INSERT OR REPLACE INTO files"
+              "(path,language,size,lines,hash,mtime,indexed_at,tier) VALUES(?,?,?,?,?,?,?,?)",
+         [p["file"] for p in prepared])
+    bulk(con, "INSERT OR REPLACE INTO symbols"
+              "(id,name,kind,path,start_line,end_line,signature,body_hash,body) "
+              "VALUES(?,?,?,?,?,?,?,?,?)",
+         [s for p in prepared for s in p["symbols"]])
+    bulk(con, "INSERT OR REPLACE INTO chunks"
+              "(id,path,symbol_id,start_line,end_line,text,text_hash,tokens) "
+              "VALUES(?,?,?,?,?,?,?,?)",
+         [c for p in prepared for c in p["chunks"]])
+    bulk(con, "INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
+         [e for p in prepared for e in p["sym_edges"]])
+    bulk(con, "INSERT INTO file_imports(path,spec) VALUES(?,?)",
+         [i for p in prepared for i in p["imports"]])
+    bulk(con, "INSERT INTO symbol_calls(symbol_id,callee_name) VALUES(?,?)",
+         [c for p in prepared for c in p["calls"]])
+
+# -- back-compat single-file entry point ---------------------------------------
+
+def index_file(con, path, source, h, size, mtime, tier="code"):
+    parsed = parse_file(path, lang_for(path), source) if tier == "code" else None
+    _bulk_write(con, [prepare_file(path, tier, source, h, size, mtime, parsed)])
+    con.commit()
 
 def remove_file(con, path):
-    con.execute("DELETE FROM files WHERE path=?", (path,))
-    con.execute("DELETE FROM symbols WHERE path=?", (path,))
-    con.execute("DELETE FROM chunks WHERE path=?", (path,))
-    con.execute("DELETE FROM edges WHERE src_path=?", (path,))
-    con.execute("DELETE FROM edges WHERE dst=?", (path,))
-    con.execute("DELETE FROM file_imports WHERE path=?", (path,))
-    con.execute("DELETE FROM vectors WHERE id LIKE ?", (path + "#%",))
+    chunk_ids = [r[0] for r in con.execute(
+        "SELECT id FROM chunks WHERE path=?", (path,)).fetchall()]
+    sym_ids = [r[0] for r in con.execute(
+        "SELECT id FROM symbols WHERE path=?", (path,)).fetchall()]
+    if chunk_ids:
+        bulk_delete_paths(con, "vectors", "id", chunk_ids)
+    if sym_ids:
+        bulk_delete_paths(con, "symbol_calls", "symbol_id", sym_ids)
+    bulk_delete_paths(con, "symbols", "path", [path])
+    bulk_delete_paths(con, "chunks", "path", [path])
+    bulk_delete_paths(con, "edges", "src_path", [path])
+    bulk_delete_paths(con, "edges", "dst", [path])
+    bulk_delete_paths(con, "file_imports", "path", [path])
 
-def link_imports(con, dirty, all_paths):
+def link_imports(con, dirty, all_paths, root=None):
+    resolver = _get_ts_resolver(root) if root else None
     paths = ([r["path"] for r in con.execute("SELECT path FROM files")]
              if dirty is None else list(dirty))
+    new_edges = []
     for p in paths:
         con.execute("DELETE FROM edges WHERE src_path=? AND kind='imports'", (p,))
         for r in con.execute("SELECT spec FROM file_imports WHERE path=?", (p,)):
-            tgt = resolve_import(p, r["spec"], all_paths)
+            tgt = resolve_import(p, r["spec"], all_paths, resolver)
             if tgt and tgt != p:
-                con.execute("INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
-                            (p, tgt, "imports", p))
+                new_edges.append((p, tgt, "imports", p))
+    bulk(con, "INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
+         new_edges)
 
 def resolve_symbol_edges(con, cfg, dirty):
     name_map = {}
     for r in con.execute("SELECT id, name, path FROM symbols"):
         if r["name"] in STOP_NAMES or len(r["name"]) < 4: continue
         name_map.setdefault(r["name"], []).append((r["id"], r["path"]))
+    imports_by_file = {}
+    for e in con.execute("SELECT src_path, dst FROM edges WHERE kind='imports'"):
+        imports_by_file.setdefault(e["src_path"], set()).add(e["dst"])
+    tree_calls = {}
+    for r in con.execute("SELECT symbol_id, callee_name FROM symbol_calls"):
+        tree_calls.setdefault(r["symbol_id"], set()).add(r["callee_name"])
     if dirty is None:
         con.execute("DELETE FROM edges WHERE kind IN ('calls','references')")
         rows = con.execute("SELECT id, path, body FROM symbols").fetchall()
@@ -91,33 +195,57 @@ def resolve_symbol_edges(con, cfg, dirty):
         ph = ",".join("?" * len(dirty))
         con.execute(f"DELETE FROM edges WHERE kind IN ('calls','references') AND src_path IN ({ph})", list(dirty))
         rows = con.execute(f"SELECT id, path, body FROM symbols WHERE path IN ({ph})", list(dirty)).fetchall()
+    new_edges = []
     for row in rows:
         body = row["body"] or ""
+        allowed = {row["path"]} | imports_by_file.get(row["path"], set())
         seen = 0
-        for m in IDENT.finditer(body):
+        if row["id"] in tree_calls:
+            cand_names = tree_calls[row["id"]]
+        else:
+            cand_names = [m.group(0) for m in IDENT.finditer(body)]
+        for name in cand_names:
             if seen > 200: break
-            hits = name_map.get(m.group(0))
+            hits = name_map.get(name)
             if not hits: continue
-            kind = "calls" if body[m.end():m.end() + 4].lstrip().startswith("(") else "references"
-            for (tid, _tp) in hits:
+            for (tid, tpath) in hits:
                 if tid == row["id"]: continue
-                con.execute("INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
-                            (row["id"], tid, kind, row["path"]))
+                if tpath not in allowed: continue      # v1.2 import-scope precision gate
+                new_edges.append((row["id"], tid, "calls", row["path"]))
                 seen += 1
+    bulk(con, "INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
+         new_edges)
     build_tested_by(con, cfg)
 
 def build_tested_by(con, cfg):
+    """Build tested_by edges from test files to the symbols they test."""
     con.execute("DELETE FROM edges WHERE kind='tested_by'")
     test_files = [r["path"] for r in con.execute("SELECT path FROM files")
                   if is_test_path(r["path"], cfg)]
+    
+    new_edges = []
     for tf in test_files:
+        # Find symbols that test files import/call/reference
         targets = {r["dst"] for r in con.execute(
             "SELECT dst FROM edges WHERE src_path=? AND kind IN ('imports','calls','references')", (tf,))}
+        
+        # Also look for direct symbol mentions in test files by name matching
+        # This catches cases where tests call functions without explicit imports
+        for row in con.execute("SELECT id, name FROM symbols WHERE kind IN ('function','method','class')"):
+            sym_id, sym_name = row["id"], row["name"]
+            # Check if test file contains the symbol name (simple heuristic)
+            chunk = con.execute("SELECT text FROM chunks WHERE path=? LIMIT 1", (tf,)).fetchone()
+            if chunk and sym_name in chunk["text"]:
+                targets.add(sym_id)
+        
         for t in targets:
             srow = con.execute("SELECT path FROM symbols WHERE id=?", (t,)).fetchone()
             if srow and srow["path"] != tf:
-                con.execute("INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
-                            (t, tf, "tested_by", srow["path"]))
+                new_edges.append((t, tf, "tested_by", srow["path"]))
+    
+    if new_edges:
+        bulk(con, "INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
+             new_edges)
 
 def embed_pending(con, cfg, batch=64, progress=None):
     """Embed unembedded chunks. Returns count embedded.
@@ -129,7 +257,9 @@ def embed_pending(con, cfg, batch=64, progress=None):
         if n == 0:
             con.execute("DELETE FROM vectors WHERE model <> ?", (cached,))
             return 0
+    print("  loading embedding model...", end="", flush=True)
     emb = get_embedder(cfg)
+    print(f" done ({emb.name})")
     set_meta(con, "embedder_name", emb.name)
     total = 0
     total_chunks = con.execute("SELECT COUNT(*) c FROM chunks c LEFT JOIN vectors v "
@@ -140,15 +270,16 @@ def embed_pending(con, cfg, batch=64, progress=None):
                            "ON v.id=c.id AND v.model=? WHERE v.id IS NULL LIMIT ?",
                            (emb.name, batch)).fetchall()
         if not rows: break
-        for r, v in zip(rows, emb.embed([r["text"] for r in rows])):
-            con.execute("INSERT OR REPLACE INTO vectors(id,model,vec) VALUES(?,?,?)",
-                        (r["id"], emb.name, to_blob(v)))
+        vecs = emb.embed([r["text"] for r in rows])
+        bulk(con, "INSERT OR REPLACE INTO vectors(id,model,vec) VALUES(?,?,?)",
+             [(r["id"], emb.name, to_blob(v)) for r, v in zip(rows, vecs)])
         con.commit()
         total += len(rows)
         if progress:
             progress("embed", total, total_chunks)
     con.execute("DELETE FROM vectors WHERE id NOT IN (SELECT id FROM chunks)")
     con.execute("DELETE FROM vectors WHERE model <> ?", (emb.name,))
+    invalidate_vectors(con)          # free any cached matrix in this process
     return total
 
 def compute_stats(con):
@@ -156,7 +287,7 @@ def compute_stats(con):
     return {"files": q("files"), "symbols": q("symbols"), "chunks": q("chunks"),
             "edges": q("edges"), "vectors": q("vectors")}
 
-def sync(root=None, full=False, do_embed=True, progress=None):
+def _sync_body(root=None, full=False, do_embed=True, progress=None):
     """Index repo. progress(phase, current, total) for long operations."""
     root = root or repo_root()
     cfg = load_config(root)
@@ -165,12 +296,14 @@ def sync(root=None, full=False, do_embed=True, progress=None):
     known = {r["path"]: (r["hash"], r["mtime"])
              for r in con.execute("SELECT path, hash, mtime FROM files")}
     all_paths, dirty, deleted = set(known), [], list(known)
-    # Phase 1: scan files
-    file_list = list(iter_files(root, cfg))
+    # Phase 1: scan files (serial, fast I/O) -- find what actually changed
+    print("  [1/4] Scanning files for changes...", flush=True) if progress else None
+    file_list = list(iter_files_smart(root, cfg))
     if progress:
         progress("scan", 0, len(file_list))
     scanned = 0
-    for rel in file_list:
+    jobs = []          # (rel, tier, source, h, size, mtime)
+    for rel, tier, _why in file_list:
         ap = os.path.join(root, rel)
         try: st = os.stat(ap)
         except OSError: continue
@@ -191,7 +324,7 @@ def sync(root=None, full=False, do_embed=True, progress=None):
             if progress and scanned % 50 == 0:
                 progress("scan", scanned, len(file_list))
             continue                                        # content unchanged
-        index_file(con, rel, src, h, st.st_size, st.st_mtime)
+        jobs.append((rel, tier, src, h, st.st_size, st.st_mtime))
         dirty.append(rel)
         all_paths.add(rel)
         scanned += 1
@@ -199,27 +332,67 @@ def sync(root=None, full=False, do_embed=True, progress=None):
             progress("scan", scanned, len(file_list))
     if progress:
         progress("scan", len(file_list), len(file_list))
+
+    # Phase 1b: parallel parse (CPU-bound) across worker processes
+    parsed_map = {}
+    code_jobs = [(rel, lang_for(rel), src, tier) for (rel, tier, src, *_)
+                 in jobs if tier == "code"]
+    if code_jobs:
+        print("  [1.5/4] Parsing %d files (parallel)..." % len(code_jobs),
+              flush=True) if progress else None
+        workers = int(cfg.get("perf", {}).get("workers", 0) or 0)
+        use_pool = workers != 1
+        try:
+            if use_pool:
+                nw = workers or (os.cpu_count() or 1)
+                with ProcessPoolExecutor(max_workers=nw) as ex:
+                    futs = {ex.submit(_parse_worker, j): j[0] for j in code_jobs}
+                    for fut in as_completed(futs):
+                        p, res = fut.result()
+                        parsed_map[p] = res
+            else:
+                for j in code_jobs:
+                    p, res = _parse_worker(j)
+                    parsed_map[p] = res
+        except Exception:
+            for j in code_jobs:
+                p, res = _parse_worker(j)
+                parsed_map[p] = res
+
+    prepared = [prepare_file(rel, tier, src, h, size, mtime, parsed_map.get(rel))
+                for (rel, tier, src, h, size, mtime) in jobs]
+    _bulk_write(con, prepared)
+    con.commit()
+
     # Phase 2: deleted
+    if deleted:
+        print(f"  [2/4] Removing {len(deleted)} deleted files...", flush=True) if progress else None
     for rel in deleted:
         remove_file(con, rel)
         all_paths.discard(rel)
+
     # Phase 3: link edges
     if dirty or deleted or full:
+        print(f"  [3/4] Linking relationships ({len(dirty)} changed files)...",
+              flush=True) if progress else None
         if progress:
             progress("link", 0, 0)
-        link_imports(con, dirty or None, all_paths)
+        link_imports(con, dirty or None, all_paths, root)
         resolve_symbol_edges(con, cfg, dirty or None)
         from .parsers import build_heritage
         build_heritage(con, dirty or None)
         con.commit()
         if progress:
             progress("link", 1, 1)
+
     # Phase 4: embed (optional)
     n_emb = 0
     if do_embed:
+        print(f"  [4/4] Embedding for semantic search...", flush=True) if progress else None
         def _emb_prog(phase, cur, tot):
             if progress: progress("embed", cur, tot)
         n_emb = embed_pending(con, cfg, progress=_emb_prog)
+
     stats = compute_stats(con)
     stats.update(dirty=len(dirty), deleted=len(deleted), embedded=n_emb,
                  ms=int((time.time() - t0) * 1000))
@@ -228,3 +401,9 @@ def sync(root=None, full=False, do_embed=True, progress=None):
                 (time.time(), "sync", str(stats)))
     con.commit()
     return stats
+
+def sync(root=None, full=False, do_embed=True, progress=None):
+    from .lock import WriteLock
+    root = root or repo_root()
+    with WriteLock(root):
+        return _sync_body(root, full, do_embed, progress)
