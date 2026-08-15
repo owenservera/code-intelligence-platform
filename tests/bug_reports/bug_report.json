@@ -1,0 +1,15 @@
+{
+  "generated": "2026-08-15T19:58:10.006813",
+  "total_bugs": 1,
+  "bugs": [
+    {
+      "test_name": "tests/terminal_dashboard/test_full_coverage.py::TestCommandCategoryScreenMethods::test_execute_command_with_ui_missing_command",
+      "error_type": "failed",
+      "error_message": "tests\\terminal_dashboard\\test_full_coverage.py:55: in test_execute_command_with_ui_missing_command\n    screen._execute_command_with_ui(\"nonexistent_command\")\nlib\\cipkg\\terminal_dashboard.py:136: in _execute_command_with_ui\n    self.app.show_alert(f\"Command not found: {command}\")\n    ^^^^^^^^^^^^^^^^^^^\nE   AttributeError: 'TestApp' object has no attribute 'show_alert'",
+      "traceback": "tests\\terminal_dashboard\\test_full_coverage.py:55: in test_execute_command_with_ui_missing_command\n    screen._execute_command_with_ui(\"nonexistent_command\")\nlib\\cipkg\\terminal_dashboard.py:136: in _execute_command_with_ui\n    self.app.show_alert(f\"Command not found: {command}\")\n    ^^^^^^^^^^^^^^^^^^^\nE   AttributeError: 'TestApp' object has no attribute 'show_alert'",
+      "severity": "CRITICAL",
+      "timestamp": "2026-08-15T19:58:09.990995",
+      "suggested_fix": "CRITICAL BUG: Dashboard screens expect the app to have a show_alert() method for displaying messages. Location: lib/cipkg/terminal_dashboard.py lines 136, 168, 172, 179. Fix: Add show_alert(message) method to your main dashboard app or mock it in tests. Impact: This prevents command execution feedback, error messages, and suggestions from displaying to users."
+    }
+  ]
+}

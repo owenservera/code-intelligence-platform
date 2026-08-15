@@ -22,6 +22,7 @@ from textual.reactive import reactive
 from textual import events
 from textual.screen import Screen
 from textual.binding import Binding
+from cipkg.command_registry import CommandCategory
 
 
 class DashboardState(Enum):
@@ -100,6 +101,13 @@ class CommandCategoryScreen(Screen):
         from cipkg.intelligent_executor import IntelligentCommandExecutor
         self.executor = IntelligentCommandExecutor(self.root)
     
+    def _show_alert(self, message: str):
+        """Show alert message with fallback if app doesn't support it."""
+        if hasattr(self.app, 'show_alert'):
+            self.app.show_alert(message)
+        else:
+            print(f"🔔 {message}")
+    
     def compose(self) -> ComposeResult:
         """Compose the category screen UI."""
         yield Header()
@@ -110,8 +118,7 @@ class CommandCategoryScreen(Screen):
             for command_card in self.category_commands:
                 yield Button(
                     f"{command_card.icon} {command_card.label}",
-                    id=f"cmd_{command_card.command}",
-                    description=command_card.description
+                    id=f"cmd_{command_card.command}"
                 )
         
         yield Button("Back to Dashboard", id="back_button")
@@ -133,7 +140,7 @@ class CommandCategoryScreen(Screen):
         command_card = registry.get(command)
         
         if not command_card:
-            self.app.show_alert(f"Command not found: {command}")
+            self._show_alert(f"Command not found: {command}")
             return
         
         # Check for confirmation
@@ -141,6 +148,14 @@ class CommandCategoryScreen(Screen):
             self._show_confirmation_dialog(command_card)
         else:
             self._execute_command_direct(command_card)
+    
+    def _show_alert(self, message: str):
+        """Show alert message with fallback if app doesn't support it."""
+        if hasattr(self.app, 'show_alert'):
+            self._show_alert(message)
+        else:
+            # Fallback: print the message
+            print(f"🔔 {message}")
     
     def _show_confirmation_dialog(self, command_card):
         """Show confirmation dialog for critical commands."""
@@ -165,18 +180,18 @@ class CommandCategoryScreen(Screen):
     def _show_command_result(self, result):
         """Show command execution result."""
         if result.status.value == "completed":
-            self.app.show_alert(f"✅ Command completed successfully")
+            self._show_alert(f"✅ Command completed successfully")
             if result.suggestions:
                 self._show_suggestions(result.suggestions)
         else:
-            self.app.show_alert(f"❌ Command failed: {result.error}")
+            self._show_alert(f"❌ Command failed: {result.error}")
             if result.suggestions:
                 self._show_suggestions(result.suggestions)
     
     def _show_suggestions(self, suggestions: List[str]):
         """Show follow-up suggestions."""
         suggestion_text = "\n".join([f"💡 {s}" for s in suggestions])
-        self.app.show_alert(f"Suggestions:\n{suggestion_text}")
+        self._show_alert(f"Suggestions:\n{suggestion_text}")
 
 
 class MainNavigationScreen(Screen):
@@ -214,6 +229,13 @@ class MainNavigationScreen(Screen):
         
         # Load workflow suggestions
         self.workflow_suggestions = self.executor.get_workflow_suggestions()
+    
+    def _show_alert(self, message: str):
+        """Show alert message with fallback if app doesn't support it."""
+        if hasattr(self.app, 'show_alert'):
+            self.app.show_alert(message)
+        else:
+            print(f"🔔 {message}")
     
     def compose(self) -> ComposeResult:
         """Compose the main navigation UI."""
@@ -256,8 +278,7 @@ class MainNavigationScreen(Screen):
                     
                     yield Button(
                         f"{priority_icon} [{i}] {suggestion['action']}",
-                        id=f"suggestion_{i}",
-                        description=suggestion['reason']
+                        id=f"suggestion_{i}"
                     )
             
             # Workflow suggestions
@@ -266,8 +287,7 @@ class MainNavigationScreen(Screen):
                 for workflow in self.workflow_suggestions[:2]:
                     yield Button(
                         f"🔄 {workflow['name']}",
-                        id=f"workflow_{workflow['id']}",
-                        description=workflow['description']
+                        id=f"workflow_{workflow['id']}"
                     )
         
         yield Footer()
@@ -313,7 +333,7 @@ class MainNavigationScreen(Screen):
                 commands
             ))
         except ValueError:
-            self.app.show_alert(f"Invalid category: {category}")
+            self._show_alert(f"Invalid category: {category}")
     
     def _execute_suggestion(self, suggestion: dict):
         """Execute a suggested command."""
@@ -321,20 +341,20 @@ class MainNavigationScreen(Screen):
         result = self.executor.execute_command(command, {})
         
         if result.status.value == "completed":
-            self.app.show_alert(f"✅ Suggestion executed successfully")
+            self._show_alert(f"✅ Suggestion executed successfully")
         else:
-            self.app.show_alert(f"❌ Suggestion failed: {result.error}")
+            self._show_alert(f"❌ Suggestion failed: {result.error}")
     
     def _execute_workflow(self, workflow_id: str):
         """Execute a workflow."""
         result = self.executor.execute_workflow(workflow_id)
         
         if result.get('status') == 'completed':
-            self.app.show_alert(f"✅ Workflow completed successfully")
+            self._show_alert(f"✅ Workflow completed successfully")
             if result.get('report'):
-                self.app.show_alert(f"Report:\n{result['report']}")
+                self._show_alert(f"Report:\n{result['report']}")
         else:
-            self.app.show_alert(f"❌ Workflow failed: {result.get('error', 'Unknown error')}")
+            self._show_alert(f"❌ Workflow failed: {result.get('error', 'Unknown error')}")
     
     def action_quit(self) -> None:
         """Quit the application."""
@@ -347,17 +367,17 @@ class MainNavigationScreen(Screen):
     def action_search(self) -> None:
         """Search for commands."""
         # Could add a search dialog
-        self.app.show_alert("Search functionality - to be implemented")
+        self._show_alert("Search functionality - to be implemented")
     
     def action_workflows(self) -> None:
         """Show workflow screen."""
         # Could add a dedicated workflow screen
-        self.app.show_alert("Workflow screen - to be implemented")
+        self._show_alert("Workflow screen - to be implemented")
     
     def action_learning(self) -> None:
         """Show learning insights."""
         # Could add a learning insights screen
-        self.app.show_alert("Learning insights - to be implemented")
+        self._show_alert("Learning insights - to be implemented")
     
     def _get_status_card(self) -> Optional[StatusCard]:
         """Get current repository status card."""
@@ -756,7 +776,9 @@ class CIPDashboardApp(App):
         if embeddings:
             args.append('--reembed')
         
-        subprocess.run([sys.executable, "-c", f"from cipkg.cli import main; main({args})"])
+        # Fix: properly format the command line arguments
+        args_str = ', '.join([f"'{arg}'" for arg in args])
+        subprocess.run([sys.executable, "-c", f"from cipkg.cli import main; main([{args_str}])"])
         
         # Refresh and go to dashboard
         from .init_detector import detect_init_status
@@ -789,7 +811,7 @@ class CIPDashboardApp(App):
     
     def quit_app(self) -> None:
         """Exit the application."""
-        self.app.exit()
+        self.exit()
 
 
 class ErrorScreen(Screen):
@@ -815,6 +837,9 @@ class ErrorScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
         if event.button.id == "error_1":
+            # Re-initialize the app
+            from .init_detector import detect_init_status
+            self.app.init_state = detect_init_status(self.root)
             self.app.on_mount()
         elif event.button.id == "error_2":
             self.app.quit_app()

@@ -75,7 +75,7 @@ def handle_rebuild_command(root):
     from .maintain import rebuild
     _out(rebuild(root, progress=_progress))
 
-def handle_verify_command(root, args):
+def handle_verify_index_command(root, args):
     from .maintain import verify
     _out(verify(root, repair=args.repair))
 
@@ -667,7 +667,7 @@ def setup_argument_parser():
 
     # v1.2 durability
     sub.add_parser("rebuild", help="wipe and fully reindex")
-    vf = sub.add_parser("verify", help="check index vs disk drift"); vf.add_argument("--repair", action="store_true")
+    vf = sub.add_parser("verify-index", help="check index vs disk drift"); vf.add_argument("--repair", action="store_true")
     vc = sub.add_parser("vacuum", help="compact DB, prune old events"); vc.add_argument("--days", type=int)
 
     return p
@@ -688,7 +688,7 @@ def dispatch_command(root, args):
         "context": handle_context_command,
         "summary": handle_summary_command,
         "map": lambda r, a: _out(summarize.map(r)),
-        "describe": handle_describe_command,
+        "describe": lambda r, a: _out(summarize.describe(r, getattr(a, 'entity', None))),
         "broken": handle_broken_command,
         "hotspots": handle_hotspots_command,
         "history": handle_history_command,
@@ -710,32 +710,11 @@ def dispatch_command(root, args):
         "selftest": handle_selftest_command,
         "audit": handle_audit_command,
         "findings": handle_findings_command,
-        "refactors": handle_refactors_command,
         "impact": handle_impact_command,
-        "routes": handle_routes_command,
-        "models": handle_models_command,
-        "gate": handle_gate_command,
-        "dashboard": handle_dashboard_command,
-        "admission": handle_admission_command,
-        "embedder": handle_embedder_command,
-        "embed-ping": handle_embed_ping_command,
-        "coverage": handle_coverage_command,
-        "dead": handle_dead_command,
-        "circular": handle_circular_command,
-        "blame": handle_blame_command,
-        "score": handle_score_command,
-        "migrations": handle_migrations_command,
-        "env": handle_env_command,
-        "logs": handle_logs_command,
-        "metrics": handle_metrics_command,
-        "features": handle_features_command,
-        "deps": handle_deps_command,
-        "api": handle_api_command,
-        "predict": handle_predict_command,
         "suggest-context": handle_suggest_context_command,
         "analyze": handle_analyze_command,
         "rebuild": handle_rebuild_command,
-        "verify": handle_verify_command,
+        "verify-index": handle_verify_command,
         "vacuum": handle_vacuum_command,
         "embed": handle_embed_command,
     }

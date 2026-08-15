@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional
+import fnmatch
 
 class SyncEngine:
     """Main sync orchestration engine."""
@@ -15,13 +16,90 @@ class SyncEngine:
         self.config = config
         self.source_dir = Path(config['sync']['source']).resolve()
         self.target_dir = Path(config['sync']['target']).expanduser().resolve()
-        self.items_to_sync = config['items']['files']
         self.backup_dir = Path(config['sync']['backup_location']).resolve()
         self.log_dir = Path('./sync_global/logs').resolve()
+        
+        # Expand patterns to actual file list
+        self.items_to_sync = self._expand_patterns()
         
         # Ensure directories exist
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _expand_patterns(self) -> List[str]:
+        """Expand glob patterns to actual file paths."""
+        expanded_files = []
+        
+        # Get patterns from config, fallback to old 'files' key
+        patterns = self.config['items'].get('patterns', [])
+        explicit_files = self.config['items'].get('files', [])
+        exclude_patterns = self.config['items'].get('exclude_patterns', [])
+        
+        # If no patterns, use old files list (backward compatibility)
+        if not patterns:
+            return explicit_files
+        
+        # Expand each pattern
+        for pattern in patterns:
+            pattern_path = self.source_dir / pattern
+            
+            # Handle directory patterns with **
+            if '**' in pattern:
+                # Recursive directory matching
+                parts = pattern.split('**')
+                base_dir = self.source_dir / parts[0] if parts[0] else self.source_dir
+                suffix = parts[1] if len(parts) > 1 else ''
+                
+                if base_dir.exists() and base_dir.is_dir():
+                    for root, dirs, files in os.walk(base_dir):
+                        root_path = Path(root)
+                        # Match files against suffix pattern
+                        for file in files:
+                            rel_path = root_path.relative_to(self.source_dir) / file
+                            if suffix:
+                                # Check if file matches the suffix pattern
+                                if fnmatch.fnmatch(str(rel_path), pattern):
+                                    expanded_files.append(str(rel_path))
+                            else:
+                                # Include all files in directory
+                                expanded_files.append(str(rel_path))
+            else:
+                # Simple glob pattern
+                if '*' in pattern:
+                    matches = list(self.source_dir.glob(pattern))
+                    for match in matches:
+                        if match.exists():
+                            rel_path = match.relative_to(self.source_dir)
+                            expanded_files.append(str(rel_path))
+                else:
+                    # Exact path
+                    if pattern_path.exists():
+                        expanded_files.append(pattern)
+        
+        # Add any explicit files that don't match patterns
+        expanded_files.extend(explicit_files)
+        
+        # Remove duplicates and sort
+        expanded_files = sorted(list(set(expanded_files)))
+        
+        # Apply exclusion patterns
+        if exclude_patterns:
+            original_count = len(expanded_files)
+            filtered_files = []
+            for file_path in expanded_files:
+                excluded = False
+                for exclude_pattern in exclude_patterns:
+                    if fnmatch.fnmatch(file_path, exclude_pattern):
+                        excluded = True
+                        break
+                if not excluded:
+                    filtered_files.append(file_path)
+            expanded_files = filtered_files
+            excluded_count = original_count - len(expanded_files)
+            self.log("INFO", f"Excluded {excluded_count} files matching exclusion patterns")
+        
+        self.log("INFO", f"Expanded {len(patterns)} patterns to {len(expanded_files)} files")
+        return expanded_files
         
     def get_file_hash(self, filepath: Path) -> str:
         """Calculate SHA256 hash of a file."""
