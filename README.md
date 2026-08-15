@@ -24,8 +24,8 @@ A continuously updated model of your codebase — structure, history, tests, run
 
 ```bash
 # Clone the repository
-git clone <repository-url>
-cd index
+git clone https://github.com/owenservera/code-intelligence-platform.git
+cd code-intelligence-platform
 
 # Run the installer
 bash install.sh
@@ -36,6 +36,8 @@ cip sync
 # Start the daemon (optional, for embedding service)
 cip daemon start
 ```
+
+For detailed installation instructions, see [Installation Guide](docs/user-guide/installation.md).
 
 ## Usage
 
@@ -64,6 +66,8 @@ cip findings --severity critical
 cip broken
 ```
 
+For complete command reference, see [Command Reference](docs/user-guide/commands.md).
+
 ### MCP Server
 
 ```bash
@@ -73,6 +77,8 @@ cip mcp
 # Or run as HTTP service
 cip serve
 ```
+
+For MCP API documentation, see [MCP Server API](docs/api/mcp-server.md).
 
 ## Configuration
 
@@ -97,6 +103,8 @@ vector_k = 30
 context_budget_tokens = 6000
 ```
 
+For detailed configuration options, see [Installation Guide](docs/user-guide/installation.md#configuration).
+
 ## Architecture
 
 CIP consists of several components:
@@ -107,6 +115,8 @@ CIP consists of several components:
 - **Retriever**: Hybrid lexical + semantic search
 - **Auditor**: Quality rule engine
 - **Daemon**: Background service for embedding operations
+
+For detailed architecture documentation, see [Architecture Overview](docs/architecture/overview.md).
 
 ## Development
 
@@ -137,12 +147,23 @@ python -m pytest lib/cipkg/test_*.py
 
 ## Stack Pack
 
-CIP includes specialized analyzers for:
+CIP includes specialized analyzers for TypeScript/Next.js/Prisma/SQLite stacks:
 
 - **Next.js**: Route detection, component analysis
 - **Prisma**: Schema validation, query analysis
 - **TypeScript**: Type tracking, import graph
 - **SQLite**: Query optimization, index detection
+
+For detailed Stack Pack documentation, see [Stack Pack Guide](docs/user-guide/stack-pack.md).
+
+## Documentation
+
+- [Installation Guide](docs/user-guide/installation.md) - Setup and configuration
+- [Command Reference](docs/user-guide/commands.md) - Complete CLI command documentation
+- [Stack Pack Guide](docs/user-guide/stack-pack.md) - Stack-specific features and rules
+- [Agents Guide](docs/user-guide/agents.md) - AI agent integration
+- [Architecture Overview](docs/architecture/overview.md) - System architecture and components
+- [MCP Server API](docs/api/mcp-server.md) - Model Context Protocol integration
 
 ## License
 
@@ -150,8 +171,26 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Contributing
 
-Contributions are welcome! Please read our contributing guidelines before submitting PRs.
+Contributions are welcome! Please feel free to submit issues or pull requests.
+
+### Development Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/owenservera/code-intelligence-platform.git
+cd code-intelligence-platform
+
+# Create a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install development dependencies
+pip install -r requirements.txt
+
+# Run tests
+python -m pytest lib/cipkg/test_*.py
+```
 
 ## Support
 
-For issues and questions, please use the GitHub issue tracker.
+For issues and questions, please use the [GitHub issue tracker](https://github.com/owenservera/code-intelligence-platform/issues).
