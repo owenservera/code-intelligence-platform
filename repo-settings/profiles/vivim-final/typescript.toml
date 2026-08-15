@@ -1,0 +1,8 @@
+# Vivim-Final TypeScript Settings
+# TypeScript/React specific configuration for the Next.js frontend
+
+[language.typescript]
+max_file_kb = 512
+test_globs = [".test.", ".spec.", "/tests/", "__tests__"]
+ignore_dirs = ["node_modules", ".next", "out", "dist", "build"]
+extensions = [".ts", ".tsx", ".js", ".jsx"]

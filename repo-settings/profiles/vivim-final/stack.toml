@@ -1,0 +1,6 @@
+# Vivim-Final Stack Settings
+# Stack-specific configuration for Prisma and Tauri
+
+[stack]
+prisma_store_contracts = true
+tauri_enabled = true

@@ -1,0 +1,46 @@
+{
+  "protocol": "cip",
+  "version": "1.2.0",
+  "id_grammar": "<language>://<path>#<Qualified.name>",
+  "chunk_grammar": "<path>#L<start>-L<end>",
+  "entities": {
+    "File":    { "key": "path" },
+    "Symbol":  { "key": "id", "kinds": ["class","function","method","interface","type","const","module","test"] },
+    "Chunk":   { "key": "id" },
+    "Commit":  { "key": "sha" },
+    "Signal":  { "key": "id", "kinds": ["test_pass","test_fail","type_error","build_error","coverage","custom","eslint"] },
+    "Summary": { "key": "id", "kinds": ["repo","dir","file","symbol"] },
+    "Route":   { "key": "path", "kinds": ["api","page","layout"], "note": "Next.js App/Pages router" },
+    "Model":   { "key": "name", "note": "Prisma schema model with usage stats" },
+    "Finding": { "key": "id", "severities": ["critical","high","medium","low","info"],
+                 "statuses": ["open","fixed","dismissed"],
+                 "note": "audit rule output; stable IDs, auto-fixed detection" }
+  },
+  "relationships": {
+    "contains":   { "from": "File",   "to": "Symbol" },
+    "exports":    { "from": "File",   "to": "Symbol" },
+    "imports":    { "from": "File",   "to": "File" },
+    "calls":      { "from": "Symbol", "to": "Symbol" },
+    "references": { "from": "Symbol", "to": "Symbol" },
+    "extends":    { "from": "Symbol", "to": "Symbol" },
+    "implements": { "from": "Symbol", "to": "Symbol" },
+    "tested_by":  { "from": "Symbol", "to": "File" },
+    "modified_by":{ "from": "File",   "to": "Commit" },
+    "co_change":  { "from": "File",   "to": "File" },
+    "uses_model": { "from": "Symbol", "to": "Model", "note": "prisma.<model>.<op>() call sites" },
+    "serves":     { "from": "Route",  "to": "File" },
+    "flagged_in": { "from": "Finding","to": "File|Symbol" }
+  },
+  "intents": ["symbol","search","architecture","history","health","tests","quality","impact"],
+  "envelope": {
+    "ok": "bool", "tool": "string", "result": "object",
+    "next_ops": "string[]",
+    "index": { "fresh": "bool", "lag_s": "number", "files": "integer" }
+  },
+  "tools": ["search","symbol","graph","context","summary","map","describe",
+            "broken","hotspots","history","route","git_index","index_status",
+            "audit","findings","refactors","impact","routes","models",
+            "rebuild","verify","vacuum"],
+  "freshness": { "stale_after_s": 300, "enforced_by": ["git-hooks","watcher","daemon"] },
+  "self_description": "GET /ontology.json · describe(entity) · cip tools --schema"
+}

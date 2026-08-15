@@ -1,0 +1,18 @@
+# CIP Index Profile
+# Repository: C:\0-BlackBoxProject-0\index
+# Purpose: CIP core project - Code Intelligence Platform
+
+[profile.index]
+include = [
+  "lib",                    # Core library code
+  "bin",                    # CLI executables
+  "bootstrap",              # Bootstrap scripts
+  "docs",                   # Documentation
+  "repo-settings",          # Repo settings system
+]
+exclude = [
+  "lib/cipkg/data",         # Runtime data
+  "__pycache__",            # Python cache (catches all pycache directories)
+  ".cip",                   # CIP data directory
+  "data",                   # Data directory
+]

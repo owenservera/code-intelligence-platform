@@ -74,61 +74,21 @@ def _parse_toml_naive(path):
 def load_config(root):
     import copy
     cfg = copy.deepcopy(DEFAULT_CONFIG)
-    
-    # Auto-detect repo type and load profile
-    try:
-        # Import from repo_settings relative to CIP installation
-        import sys
-        cip_base_dir = os.path.dirname(os.path.dirname(__file__))
-        repo_settings_dir = os.path.join(cip_base_dir, "repo-settings")
-        if repo_settings_dir not in sys.path:
-            sys.path.insert(0, repo_settings_dir)
-        
-        from detectors import detect_repo_type, load_repo_profile
-        repo_type = detect_repo_type(root)
-        profile_cfg = load_repo_profile(repo_type)
-        
-        # Apply profile settings to main config sections
-        for section, kv in profile_cfg.items():
-            if section == "profile":
-                # Handle profile nesting - flatten profile.vivim to index level
-                for profile_name, profile_data in kv.items():
-                    if isinstance(profile_data, dict):
-                        for sub_section, sub_kv in profile_data.items():
-                            if sub_section in ("include", "exclude"):
-                                # These go into index section
-                                cfg.setdefault("index", {}).setdefault(sub_section, []).extend(sub_kv)
-                            elif isinstance(sub_kv, dict):
-                                cfg.setdefault(sub_section, {}).update(sub_kv)
-                            elif isinstance(sub_kv, list):
-                                cfg.setdefault(sub_section, {}).setdefault(sub_section, []).extend(sub_kv)
-            elif isinstance(kv, dict):
-                cfg.setdefault(section, {}).update(kv)
-            elif isinstance(kv, list):
-                cfg.setdefault(section, {}).setdefault(section, []).extend(kv)
-    except Exception as e:
-        # Fallback to basic config if detection fails
-        pass
-    
-    # Load local repo config for overrides
     path = os.path.join(cip_dir(root), "config.toml")
-    if os.path.exists(path):
-        try:
-            import tomllib
-            with open(path, "rb") as f: data = tomllib.load(f)
-        except ImportError:
-            data = _parse_toml_naive(path)
-        
-        # Merge local overrides (lowest priority)
-        for section, kv in data.items():
-            if isinstance(kv, dict):
-                cfg.setdefault(section, {}).update(kv)
-    
+    if not os.path.exists(path):
+        return cfg
+    try:
+        import tomllib
+        with open(path, "rb") as f: data = tomllib.load(f)
+    except ImportError:
+        data = _parse_toml_naive(path)
+    for section, kv in data.items():
+        if isinstance(kv, dict):
+            cfg.setdefault(section, {}).update(kv)
     return cfg
 
 def _excluded(rel_dir, name, extra):
     rel = name if rel_dir in (".", "") else f"{rel_dir}/{name}"
-    # Check for substring matches (handles patterns like "__pycache__" anywhere in path)
     return any(pat in rel for pat in extra)
 
 def iter_files(root, cfg):
@@ -137,15 +97,8 @@ def iter_files(root, cfg):
     file instead of walk + a separate stat/getsize — important on Windows)."""
     maxb = int(cfg["index"]["max_file_kb"]) * 1024
     extra = list(cfg["index"]["exclude"])
-    include_list = cfg.get("index", {}).get("include", [])
     root = os.path.abspath(root)
-    
-    # If include list is specified, start from those directories instead of root
-    if include_list:
-        stack = [os.path.join(root, inc) for inc in include_list if os.path.isdir(os.path.join(root, inc))]
-    else:
-        stack = [root]
-    
+    stack = [root]
     while stack:
         dirpath = stack.pop()
         try:
@@ -160,7 +113,6 @@ def iter_files(root, cfg):
                         stack.append(e.path)
                     elif e.is_file(follow_symlinks=False):
                         rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
-                        file_rel_path = e.name if rel_dir == "." else f"{rel_dir}/{e.name}"
                         if _excluded(rel_dir, e.name, extra):
                             continue
                         try:
@@ -169,7 +121,7 @@ def iter_files(root, cfg):
                             continue
                         if sz > maxb:
                             continue
-                        yield file_rel_path
+                        yield e.name if rel_dir == "." else f"{rel_dir}/{e.name}"
         except OSError:
             continue
 

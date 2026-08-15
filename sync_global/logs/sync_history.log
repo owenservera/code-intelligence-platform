@@ -1,0 +1,7 @@
+[2026-08-15 17:43:56] DRY_RUN: Would sync: repo-settings
+[2026-08-15 17:43:56] DRY_RUN: Would sync: lib/cipkg/base.py
+[2026-08-15 17:43:56] DRY_RUN: Would sync: config.default.toml
+[2026-08-15 17:44:04] INFO: Backup created: backup_20260815_174404
+[2026-08-15 17:44:04] INFO: Synced directory: repo-settings
+[2026-08-15 17:44:04] INFO: Synced file: lib/cipkg/base.py
+[2026-08-15 17:44:04] INFO: Synced file: config.default.toml

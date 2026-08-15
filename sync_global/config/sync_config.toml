@@ -1,0 +1,25 @@
+# CIP Global Sync Configuration
+
+[sync]
+source = "."                    # Local repo root (relative to script)
+target = "~/.cip-global"        # Global CIP installation
+backup_enabled = true
+backup_location = "./sync_global/backups"
+log_level = "INFO"
+
+[items]
+files = [
+    "repo-settings",
+    "lib/cipkg/base.py",
+    "config.default.toml"
+]
+
+[validation]
+pre_sync_checks = true
+post_sync_tests = true
+cip_command_tests = true
+
+[rollback]
+enabled = true
+max_backups = 5
+auto_rollback_on_failure = true
