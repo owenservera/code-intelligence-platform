@@ -180,12 +180,22 @@ def get_embedder(cfg, root=None):
             return _cached(("service", port), lambda: RemoteEmbedder(
                 port, name=h.get("model"), dim=int(h.get("dim") or 384)))
 
-    # 3. hashing (offline, no model needed)
+    # 3. hashing (offline, no model needed) - for explicit hashing backend
     if backend == "hashing":
         return _cached(("hashing", 0), lambda: HashingEmbedder(
             int(ecfg.get("dim", 1024))))
 
-    # 4. local singleton (slow, uses HF if not cached)
+    # 4. local singleton (slow, uses HF if not cached) - for auto mode, try local first
+    if backend == "auto":
+        try:
+            model = ecfg.get("model", MODEL_NAME)
+            return _cached(("local", model), lambda: LocalEmbedder(model))
+        except ImportError:
+            # torch/sentence-transformers not installed — fall through to hashing
+            return _cached(("hashing", 0), lambda: HashingEmbedder(
+                int(ecfg.get("dim", 1024))))
+
+    # 5. explicit "local" backend requested — let ImportError surface
     model = ecfg.get("model", MODEL_NAME)
     return _cached(("local", model), lambda: LocalEmbedder(model))
 

@@ -7,7 +7,7 @@ guidance for the initialization process.
 
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 from enum import Enum
 
 
@@ -371,28 +371,6 @@ def detect_init_status(root: str) -> InitState:
     """Convenience function to detect initialization status."""
     detector = InitDetector(root)
     return detector.detect()
-
-
-def get_init_ui_text(state: InitState) -> str:
-    """Get UI text for initialization state."""
-    if state.status == InitStatus.NOT_INITIALIZED:
-        return "Repository Not Initialized"
-    elif state.status == InitStatus.INITIALIZED_NO_INDEX:
-        return "Repository Ready - Index Needed"
-    elif state.status == InitStatus.INITIALIZED_STALE_INDEX:
-        return "Repository Ready - Index Stale"
-    elif state.status == InitStatus.FULLY_INITIALIZED:
-        return "Repository Ready"
-    else:
-        return "Error Detecting Status"
-
-
-def should_launch_dashboard(state: InitState) -> bool:
-    """Determine if dashboard should be launched."""
-    return state.status in [
-        InitStatus.FULLY_INITIALIZED,
-        InitStatus.INITIALIZED_STALE_INDEX
-    ]
 
 
 def get_init_ui_text(state: InitState) -> str:

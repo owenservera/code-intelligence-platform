@@ -1,10 +1,11 @@
 """cip v1.0 — command line interface for the Code Intelligence Protocol."""
-import argparse, json, os, shutil, sys, time
+import argparse, json, os, shutil, time
 
 from . import gapfill
+from . import summarize
 from .hooks import install_agent_hooks, run_hook_command
 from .session import session_start, session_end, get_active_session
-from .verify import verify, verification_gate
+from .verify import verify
 from . import learning
 
 HOOKS = ("post-commit", "post-merge", "post-checkout")
@@ -85,6 +86,8 @@ def handle_vacuum_command(root, args):
 
 def handle_embed_command(root, args):
     from . import indexer
+    from .store import connect
+    from .base import load_config
     _out(indexer.embed_pending(connect(root), load_config(root), batch=args.batch, progress=_progress))
 
 def handle_hook_command(root, args):
@@ -138,6 +141,7 @@ def handle_upgrade_command(root, args):
 
 def handle_detect_command(root, args):
     from . import detect
+    from .base import load_config
     cfg = load_config(root)
     _out(detect.detect(root, cfg))
 
@@ -175,6 +179,12 @@ def handle_graph_command(root, args):
 def handle_context_command(root, args):
     from . import retrieve
     _out(retrieve.context(root, getattr(args, 'query', None), getattr(args, 'symbol', None), getattr(args, 'budget', None)))
+
+def handle_suggest_context_command(root, args):
+    """Handle 'cip suggest-context' — suggest relevant context for editing a file."""
+    from . import predict
+    result = predict.suggest_context_for_edit(root, getattr(args, "file", None))
+    _out(result)
 
 def handle_summary_command(root, args):
     from . import summarize
@@ -225,33 +235,6 @@ def handle_mcp_command(root, args):
 def handle_tools_command(root, args):
     from .server import TOOLS
     if getattr(args, 'schema', False):
-        _out({"tools": TOOLS})
-    else:
-        for t in TOOLS:
-            print(f"{t['name']}: {t['description']}")
-
-def handle_selftest_command(root, args):
-    from .selftest import selftest
-    _out(selftest(root))
-
-def handle_export_command(root, args):
-    from .export import export
-    _out(export(root, args.format, args.out))
-
-def handle_doctor_command(root, args):
-    cmd_doctor(root)
-
-def handle_serve_command(root, args):
-    from .server import serve
-    serve(root, args.port)
-
-def handle_mcp_command(root, args):
-    from .server import mcp_main
-    mcp_main()
-
-def handle_tools_command(root, args):
-    from .server import TOOLS
-    if args.schema:
         _out({"tools": TOOLS})
     else:
         for t in TOOLS:
@@ -392,10 +375,8 @@ def cmd_doctor(root):
         health_str = "%d/100 (%s)" % (sc.get("score", 0), sc.get("grade", "?"))
     except Exception as e:
         health_str = "n/a (%s)" % e
-    import os as _os
-    from .base import data_dir as _data_dir
-    dbp = _os.path.join(_data_dir(root), "index.db")
-    db_mb = ("%.2f MB" % (_os.path.getsize(dbp) / 1e6)) if _os.path.exists(dbp) else "n/a"
+    dbp = os.path.join(data_dir(root), "index.db")
+    db_mb = ("%.2f MB" % (os.path.getsize(dbp) / 1e6)) if os.path.exists(dbp) else "n/a"
     dims = con.execute("SELECT length(vec)/4 v FROM vectors LIMIT 1").fetchone()
     dims_str = str(dims["v"]) if dims and dims["v"] else "?"
     rows += [
@@ -466,7 +447,7 @@ def cmd_daemon_stop(root):
     daemon_stop(root)
 
 def cmd_embed_ping(root, count):
-    from .embed import service_health, RemoteEmbedder
+    from .embed import RemoteEmbedder
     port, health = _check_daemon(root)
     health = health or {}
     if not port:
@@ -612,7 +593,7 @@ def setup_argument_parser():
     pp.add_argument("count", nargs="?", type=int, default=5)
 
     # v2 gap-fillers — close pressure-test scenarios 63/70/71/72/78/100/106/107…
-    gf = sub.add_parser("coverage", help="test-coverage signals (scenario 63/228/229)")
+    sub.add_parser("coverage", help="test-coverage signals (scenario 63/228/229)")
     sub.add_parser("dead", help="dead-code / unused-symbol detection (71)")
     sub.add_parser("circular", help="circular-dependency detection (72)")
     bl = sub.add_parser("blame", help="git blame for a file [+line] (78)")
@@ -708,9 +689,6 @@ def dispatch_command(root, args):
         "verify": handle_verify_command,
         "learning": handle_learning_command,
         "selftest": handle_selftest_command,
-        "audit": handle_audit_command,
-        "findings": handle_findings_command,
-        "impact": handle_impact_command,
         "suggest-context": handle_suggest_context_command,
         "analyze": handle_analyze_command,
         "rebuild": handle_rebuild_command,
@@ -736,7 +714,7 @@ def main(argv=None):
         p.print_help()
         return 0
 
-    from .base import repo_root, load_config, cip_dir
+    from .base import repo_root
     root = os.getcwd() if a.cmd == "init" else repo_root()
 
     return dispatch_command(root, a)

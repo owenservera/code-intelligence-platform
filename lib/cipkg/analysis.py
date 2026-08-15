@@ -14,7 +14,7 @@ def repo_health_report(root=None):
     cfg = load_config(root)
     
     # Gather metrics
-    health_score = _calculate_health_score(con, cfg)
+    health_score = _calculate_health_score(con, cfg, root)
     critical_issues = _list_critical_issues(con)
     high_priority = _list_high_priority(con)
     test_coverage = gapfill.coverage()
@@ -32,11 +32,10 @@ def repo_health_report(root=None):
         "recommendations": recommendations
     }
 
-def _calculate_health_score(con, cfg):
+def _calculate_health_score(con, cfg, root):
     """Calculate overall health score (0-100)."""
     # Get basic stats
     total_symbols = con.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
-    total_files = con.execute("SELECT COUNT(*) FROM files").fetchone()[0]
     
     if total_symbols == 0:
         return 50  # Neutral score for empty repo
@@ -52,7 +51,9 @@ def _calculate_health_score(con, cfg):
         critical_count = sum(1 for f in findings if f.get("severity") == "critical")
         high_count = sum(1 for f in findings if f.get("severity") == "high")
         quality_score = max(0, 100 - (critical_count * 20) - (high_count * 10))
-    except:
+    except Exception as e:
+        from .base import log_swallowed
+        log_swallowed("analysis._calculate_health_score/quality", e)
         quality_score = 80  # Default if stack pack unavailable
     
     # Freshness component
@@ -61,15 +62,19 @@ def _calculate_health_score(con, cfg):
         verify_result = verify(root)
         fresh = verify_result.get("fresh", False)
         freshness_score = 100 if fresh else 50
-    except:
+    except Exception as e:
+        from .base import log_swallowed
+        log_swallowed("analysis._calculate_health_score/freshness", e)
         freshness_score = 50
     
     # Complexity component (dead code ratio)
     try:
-        dead_result = gapfill.dead()
+        dead_result = gapfill.dead(root)
         dead_ratio = dead_result.get("count", 0) / total_symbols if total_symbols > 0 else 0
         complexity_score = max(0, 100 - (dead_ratio * 100))
-    except:
+    except Exception as e:
+        from .base import log_swallowed
+        log_swallowed("analysis._calculate_health_score/complexity", e)
         complexity_score = 80
     
     # Weighted score
@@ -94,7 +99,9 @@ def _list_critical_issues(con):
                     "title": f.get("title"),
                     "suggestion": f.get("suggestion")
                 })
-    except:
+    except Exception as e:
+        from .base import log_swallowed
+        log_swallowed("analysis._list_critical_issues/security", e)
         pass
     
     # Untested load-bearing symbols
@@ -136,7 +143,9 @@ def _list_high_priority(con):
                     "title": f.get("title"),
                     "suggestion": f.get("suggestion")
                 })
-    except:
+    except Exception as e:
+        from .base import log_swallowed
+        log_swallowed("analysis._list_high_priority/duplication", e)
         pass
     
     # High complexity functions

@@ -1,0 +1,16 @@
+# Core runtime
+numpy>=1.24
+tomli>=2.0; python_version < "3.11"
+
+# Embedding (local backend)
+sentence-transformers>=2.5
+torch>=2.1
+
+# Parsing
+tree-sitter>=0.21
+tree-sitter-languages>=1.10
+
+# TUI
+textual>=0.55
+
+# HTTP client already in stdlib (urllib) — no extra dep needed for daemon/service mode

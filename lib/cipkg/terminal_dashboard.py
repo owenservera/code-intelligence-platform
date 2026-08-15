@@ -757,9 +757,8 @@ class CIPDashboardApp(App):
     def initialize_repo(self, custom: bool = False) -> None:
         """Initialize repository."""
         import os
-        import subprocess
-        
-        subprocess.run([sys.executable, "-c", "from bin.cip import init_repo; init_repo()"])
+        from bin.cip import init_repo
+        init_repo()
         
         # Refresh and go to next screen
         from .init_detector import detect_init_status
@@ -768,7 +767,7 @@ class CIPDashboardApp(App):
     
     def build_index(self, embeddings: bool = False) -> None:
         """Build index."""
-        import subprocess
+        from cipkg.cli import main
         import os
         
         os.chdir(self.root)
@@ -776,9 +775,7 @@ class CIPDashboardApp(App):
         if embeddings:
             args.append('--reembed')
         
-        # Fix: properly format the command line arguments
-        args_str = ', '.join([f"'{arg}'" for arg in args])
-        subprocess.run([sys.executable, "-c", f"from cipkg.cli import main; main([{args_str}])"])
+        main(args)
         
         # Refresh and go to dashboard
         from .init_detector import detect_init_status
@@ -886,6 +883,5 @@ def launch_interactive_dashboard(root: str):
     except Exception as e:
         print(f"Error launching interactive dashboard: {e}")
         print("Falling back to traditional CLI...")
-        import subprocess
-        import sys
-        subprocess.run([sys.executable, "-c", "from cipkg.cli import main; main(['--help'])"])
+        from cipkg.cli import main
+        main(['--help'])

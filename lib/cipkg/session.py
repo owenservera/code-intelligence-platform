@@ -1,8 +1,7 @@
 """Session management for agent integration: standing context, session lifecycle.
 Provides budget-capped repo context packets and session-end learning loops."""
-import os, json, time, subprocess
+import os, json, time
 from .base import repo_root, load_config
-from .store import connect
 from . import summarize, gitindex, retrieve
 from .stack import audit as stack_audit
 from .verify import verify
@@ -19,7 +18,8 @@ def session_start(root=None):
     """
     root = root or repo_root()
     cfg = load_config(root)
-    con = connect(root)
+    # con was never used downstream — removed. If a future feature needs it,
+    # open it in a `with closing(connect(root)) as con:` block scoped to that use.
     
     session_data = {
         "session_id": int(time.time()),
@@ -135,7 +135,7 @@ def session_end(root=None, session_id=None):
     # Trigger learning loop analysis (non-blocking)
     try:
         learning.update_prediction_confidence(root)
-    except Exception as e:
+    except Exception:
         # Don't fail session end if learning loop has issues
         pass
     

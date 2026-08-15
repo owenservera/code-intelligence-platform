@@ -6,8 +6,8 @@ all v2.0 features including context management, suggestions, workflows, learning
 and UI components.
 """
 
-from typing import Dict, List, Optional, Any
-from cipkg.context_manager import ContextManager
+
+from cipkg.context_manager import ContextManager, UnifiedContext
 from cipkg.suggestion_engine import SuggestionEngine
 from cipkg.workflow_engine import WorkflowExecutor
 from cipkg.learning_system import LearningSystem
@@ -15,8 +15,7 @@ from cipkg.command_adapter import ContextAwareCommand
 from cipkg.help_system import ContextAwareHelpGenerator
 from cipkg.error_system import handle_error_with_recovery, validate_preconditions
 from cipkg.interactive_ui import (
-    WelcomeScreen, WorkflowScreen, SearchResultsScreen, SettingsScreen,
-    Menu, ProgressBar, AlertBox, KeyboardNavigation
+    WelcomeScreen, SettingsScreen
 )
 from cipkg.base import load_config
 
@@ -53,8 +52,6 @@ class InteractiveMode:
     
     def _run_interactive_loop(self):
         """Main interactive loop."""
-        from cipkg.context_manager import UnifiedContext
-        
         context = self.context_manager.get_context()
         
         while self.running:
@@ -250,9 +247,9 @@ class InteractiveMode:
             adapted_result = self.context_aware_command.execute(command, args, context_dict)
             
             if adapted_result.get('adapted'):
-                print(f"✅ Command executed with adaptations")
+                print("✅ Command executed with adaptations")
             else:
-                print(f"✅ Command executed")
+                print("✅ Command executed")
                 
         except Exception as e:
             # Handle error with recovery

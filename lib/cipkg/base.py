@@ -1,5 +1,32 @@
 """Core utilities: repo discovery, config, hashing, file iteration, tokenizing."""
-import hashlib, os, re
+import hashlib, os, re, logging
+
+log = logging.getLogger("cip")
+
+def log_swallowed(where: str, exc: Exception):
+    """Call this from every except-and-continue block so failures are visible
+    with CIP_DEBUG=1 without changing control flow."""
+    if os.environ.get("CIP_DEBUG"):
+        log.warning("swallowed exception in %s: %r", where, exc)
+
+def _load_default_toml():
+    """Load default configuration from TOML files."""
+    import tomllib
+    cfg = {}
+    # Try to load from both config.default.toml and config.v2.default.toml
+    for filename in ["config.default.toml", "config.v2.default.toml"]:
+        try:
+            # Try relative to this file (lib/cipkg/base.py -> repo root)
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            path = os.path.join(base_dir, filename)
+            if os.path.exists(path):
+                with open(path, "rb") as f:
+                    for section, kv in tomllib.load(f).items():
+                        cfg.setdefault(section, {}).update(kv)
+        except Exception as e:
+            # If TOML loading fails, continue with defaults
+            log_swallowed(f"base._load_default_toml/{filename}", e)
+    return cfg
 
 CIP_DIRNAME = ".cip"
 
@@ -7,7 +34,11 @@ DEFAULT_EXCLUDES = {
     ".git", ".cip",  # Only truly universal excludes
 }
 
+# Load defaults from TOML files, falling back to hardcoded defaults
+_toml_defaults = _load_default_toml()
+
 DEFAULT_CONFIG = {
+    # Hardcoded fallback defaults (used if TOML files don't exist or are incomplete)
     "index": {"max_file_kb": 512, "exclude": [],
               "test_globs": ["test_", "_test.", ".test.", ".spec.", "/tests/", "__tests__"]},
     "embed": {"backend": "auto", "model": "BAAI/bge-small-en-v1.5", "dim": 384,
@@ -26,6 +57,10 @@ DEFAULT_CONFIG = {
     # Core CIP has no default profiles - repos define their own in .cip/config.toml
     "profile": {}
 }
+
+# Merge TOML defaults on top of hardcoded defaults
+for section, kv in _toml_defaults.items():
+    DEFAULT_CONFIG.setdefault(section, {}).update(kv)
 
 def repo_root(start=None):
     p = os.path.abspath(start or os.getcwd())
@@ -106,7 +141,7 @@ def load_config(root):
                 cfg.setdefault(section, {}).update(kv)
             elif isinstance(kv, list):
                 cfg.setdefault(section, {}).setdefault(section, []).extend(kv)
-    except Exception as e:
+    except Exception:
         # Fallback to basic config if detection fails
         pass
     

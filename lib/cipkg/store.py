@@ -1,6 +1,6 @@
 """SQLite storage v1.0: + summaries, commits, commit_files, signals.
 CREATE IF NOT EXISTS makes old databases upgrade in place."""
-import os, sqlite3
+import os, sqlite3, threading
 
 SCHEMA_VERSION = 4
 
@@ -88,7 +88,8 @@ def connect(root):
     con.execute("PRAGMA temp_store=MEMORY")           # sorts/joins in RAM
     con.execute("PRAGMA wal_autocheckpoint=2000")     # less frequent WAL churn
     con.execute("PRAGMA foreign_keys=OFF")            # we manage deletes explicitly
-    _VEC_CACHE[os.path.abspath(db)] = None
+    # Don't blow away a warm cache just because a new connection was opened —
+    # invalidation is handled by vector_signature() comparison, not by connect().
     con.executescript(CORE_SCHEMA)
     try:
         con.execute("CREATE VIRTUAL TABLE IF NOT EXISTS _fts_probe USING fts5(x)")
@@ -152,6 +153,7 @@ def _ensure_tokenizer(con):
 
 # ── v2: bulk-write helpers + cross-call vector cache ──────────────────────────
 
+_VEC_CACHE_LOCK = threading.Lock()
 _VEC_CACHE = {}   # db_path -> (signature, ids, matrix) for fast repeated KNN
 
 
@@ -192,9 +194,10 @@ def vector_matrix(con, model):
     from .embed import from_blob
     db = os.path.abspath(_db_path(con))
     sig = vector_signature(con, model)
-    cached = _VEC_CACHE.get(db)
-    if cached is not None and cached[0] == sig and cached[1] is not None:
-        return cached[1], cached[2]
+    with _VEC_CACHE_LOCK:
+        cached = _VEC_CACHE.get(db)
+        if cached is not None and cached[0] == sig and cached[1] is not None:
+            return cached[1], cached[2]
     rows = con.execute("SELECT id, vec FROM vectors WHERE model=?", (model,)).fetchall()
     ids, mat = [], None
     if rows:
@@ -205,7 +208,8 @@ def vector_matrix(con, model):
         except ImportError:
             ids = [r["id"] for r in rows]
             mat = [from_blob(r["vec"]) for r in rows]
-    _VEC_CACHE[db] = (sig, ids, mat)
+    with _VEC_CACHE_LOCK:
+        _VEC_CACHE[db] = (sig, ids, mat)
     return ids, mat
 
 
@@ -219,6 +223,7 @@ def _db_path(con):
 def invalidate_vectors(con):
     """Drop any cached vector matrix for this connection's database."""
     try:
-        _VEC_CACHE.pop(os.path.abspath(_db_path(con)), None)
+        with _VEC_CACHE_LOCK:
+            _VEC_CACHE.pop(os.path.abspath(_db_path(con)), None)
     except Exception:
         pass
