@@ -28,4 +28,5 @@ exclude = [
   "frontend/download",
   "claude-investigate",
   "intelligence-pack-acu-dcb-storage",
+  ".archive",               # Archive folder
 ]

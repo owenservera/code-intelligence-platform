@@ -26,3 +26,6 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Sync system backups
+sync_global/backups/

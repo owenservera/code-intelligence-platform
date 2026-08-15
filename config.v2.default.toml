@@ -1,0 +1,210 @@
+# CIP CLI v2.0 Default Configuration
+# This file contains the default configuration for CIP CLI v2.0 features
+# Users can override these settings in their .cip/config.toml file
+
+[interactive]
+# Enable interactive mode features
+enabled = true
+# Mode: auto (auto-detect), interactive (always interactive), hybrid (mixed)
+mode = "hybrid"
+# Enable intelligent suggestions
+suggestions_enabled = true
+# Enable learning system
+learning_enabled = true
+# Maximum number of suggestions to show
+max_suggestions = 5
+# Show context information in help
+show_context = true
+
+[interactive.workflows]
+# Enable specific workflows
+pre_commit_enabled = true
+diagnosis_enabled = true
+optimization_enabled = true
+onboarding_enabled = true
+migration_enabled = false
+
+[interactive.learning]
+# Learning system configuration
+pattern_tracking = true
+personalization = true
+# Data retention in days
+retention_days = 30
+# Minimum pattern frequency for learning
+min_pattern_frequency = 3
+# Confidence threshold for suggestions
+confidence_threshold = 0.6
+
+[context]
+# Context management configuration
+cache_ttl = 300
+# Auto-update context
+auto_update = true
+# Persist context on exit
+persist_on_exit = true
+# Validate context on load
+validate_on_load = true
+
+[context.providers]
+# Enabled context providers
+enabled = ["repository", "git", "filesystem", "system"]
+# Provider timeout in seconds
+provider_timeout = 30
+
+[context.user_tracking]
+# User tracking configuration
+enabled = true
+# Data retention in days
+retention_days = 90
+# Maximum command history to keep
+max_command_history = 100
+# Track usage patterns
+track_patterns = true
+
+[context.validation]
+# Context validation configuration
+strict_mode = false
+# Fail on validation errors
+fail_on_error = false
+# Log validation warnings
+log_warnings = true
+
+[command_adaptation]
+# Command adaptation configuration
+enabled = true
+# Fallback to original behavior on error
+fallback_on_error = true
+# Show adaptation information
+show_adaptations = true
+# Require confirmation for adaptations
+require_confirmation = false
+
+[command_adaptation.audit]
+# Audit command adaptation
+auto_diff = true
+auto_framework = true
+auto_comprehensive = false
+
+[command_adaptation.search]
+# Search command adaptation
+auto_context_path = true
+auto_file_types = true
+auto_boost_recent = true
+
+[command_adaptation.index]
+# Index command adaptation
+auto_force = true
+auto_embed = true
+auto_parallel = true
+
+[error_handling]
+# Error handling configuration
+log_level = "INFO"
+# Enable automatic recovery
+enable_auto_recovery = true
+# Maximum recovery attempts
+max_recovery_attempts = 3
+# Recovery timeout in seconds
+recovery_timeout = 30
+# Show detailed error information
+show_error_details = true
+# Send anonymous error reports
+send_anonymous_reports = false
+
+[error_handling.prevention]
+# Error prevention configuration
+check_disk_space = true
+# Minimum disk space in MB
+min_disk_space_mb = 100
+check_memory = true
+# Minimum memory in MB
+min_memory_mb = 100
+check_index_freshness = true
+# Warn when working on main branch
+warn_on_main_branch = true
+
+[error_handling.learning]
+# Error learning configuration
+track_error_patterns = true
+suggest_preventive_actions = true
+learn_from_recoveries = true
+
+[error_handling.logging]
+# Error logging configuration
+# Log retention in days
+retention_days = 30
+# Maximum log file size in MB
+max_log_size_mb = 100
+# Compress old logs
+compress_old_logs = true
+
+[ui]
+# User interface configuration
+theme = "dark"
+# Terminal width
+width = 80
+# Terminal height
+height = 24
+# Enable animations
+enable_animations = true
+# Enable sounds
+enable_sounds = false
+
+[ui.accessibility]
+# Accessibility configuration
+high_contrast = false
+large_text = false
+screen_reader_mode = false
+# Enable keyboard navigation
+keyboard_navigation = true
+
+[ui.interactive]
+# Interactive UI configuration
+show_suggestions = true
+show_context = true
+show_progress = true
+# Auto-refresh content
+auto_refresh = true
+
+[ui.colors]
+# Color configuration
+primary = "#3B82F6"
+success = "#10B981"
+warning = "#F59E0B"
+error = "#EF4444"
+info = "#6366F1"
+
+[workflows]
+# Workflow configuration
+state_retention_days = 30
+# Maximum executions per workflow
+max_executions_per_workflow = 10
+# Auto-resume on error
+auto_resume_on_error = false
+
+[workflows.pre_commit]
+# Pre-commit workflow configuration
+enabled = true
+# Auto-run on git hooks
+auto_run_on_git_hooks = true
+# Required checks
+required_checks = ["audit", "impact", "tests"]
+# Optional checks
+optional_checks = ["lint", "format"]
+
+[workflows.diagnosis]
+# Diagnosis workflow configuration
+enabled = true
+# Auto-run when health below threshold
+auto_run_on_health_below = 70
+# Schedule: weekly, daily, never
+schedule = "weekly"
+
+[sync]
+# Sync system configuration for v2.0
+# Enable context-aware sync
+context_aware = true
+# Auto-sync on context changes
+auto_sync_on_context_change = false
+# Sync interval in minutes
+sync_interval = 60

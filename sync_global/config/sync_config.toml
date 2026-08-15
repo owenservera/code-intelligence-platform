@@ -11,7 +11,23 @@ log_level = "INFO"
 files = [
     "repo-settings",
     "lib/cipkg/base.py",
-    "config.default.toml"
+    "config.default.toml",
+    "lib/cipkg/init_detector.py",
+    "lib/cipkg/terminal_dashboard.py",
+    "lib/cipkg/interactive_ui.py",
+    "lib/cipkg/interactive.py",
+    "lib/cipkg/command_registry.py",
+    "lib/cipkg/intelligent_executor.py",
+    "lib/cipkg/context_manager.py",
+    "lib/cipkg/learning_system.py",
+    "lib/cipkg/suggestion_engine.py",
+    "lib/cipkg/workflow_engine.py",
+    "lib/cipkg/command_adapter.py",
+    "lib/cipkg/error_system.py",
+    "lib/cipkg/help_system.py",
+    "bin/cip",
+    "bin/cip.py",
+    "config.v2.default.toml"
 ]
 
 [validation]
