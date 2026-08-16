@@ -13,14 +13,13 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
   `lib/cipkg/**` surfaces and applies to every future repo CIP indexes. The `09` log is CIP dogfooding
   itself. Portability = CIP dispatches detectors by file language (RUNBOOK §0, `PROFILE.cip.md` §2). We do
   NOT copy campaign docs into other repos.
-- **Phase S complete (systemic foundation, 5/5) + Phase 3 complete (index integrity, 3/3).** Phases
-  remaining: 4 → 0 → 1 → 2 → 5 → manual (DEPENDENCIES.md §2).
-- **Next unit: Phase 4 — audit/health honesty (ranks 4–8, dashboard-critical):** BUG-013/F-01/CORE-27
-  (health score truth), BUG-015, F-24/F-41 (audit silent-path — dep S1), BUG-014, CORE-30 (empty-repo
-  health ring). First route the F-42/finding path through real `cip analyze`/`cip audit`/`cip doctor`
-  runs and re-measure LEDGER §2 Ph4 KPIs. Then Phase 0 → 1 → 2 → 5 → manual M1–M4.
+- **Phase S complete (systemic foundation, 5/5) + Phase 3 complete (index integrity, 3/3) + Phase 4
+  complete (audit/health honesty, 5/5).** Phases remaining: 0 → 1 → 2 → 5 → manual (DEPENDENCIES.md §2).
+- **Next unit: Phase 0 — undefined names & broken imports (ranks 9–17).** Mostly retired by S2/S3 gates;
+  apply the remaining one-line fixes (F-06, F-20, F-31, etc.) + add `cli.py` `__main__` guard
+  (`python -m cipkg.cli <cmd>` must not silently no-op). Then 1 → 2 → 5 → manual M1–M4.
 
-## Completed this session (S4 + S3 landing reflection)
+## Completed this session (Phases S3 + S4 + Phase 4 landing)
 
 ### Framing / docs generalized (product-wide, not repo- or Python-specific)
 - `PROFILE.cip.md` (NEW): CIP's own wiring + per-language instrument matrix (LINT, swallow, signature
@@ -196,6 +195,38 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
   (156 files in ~4.6s). Phase 4 KPIs must measure with `do_embed=False` and note the `-m` gap.
 (156 files in ~4.6s). Phase 4 KPIs must measure with `do_embed=False` and note the `-m` gap.
 
+### Phase 4 — audit/health honesty — **DONE, proven(b+c), regression-locked (8/8)**
+- **Detector module:** `tests/detectors/s6_audit_integrity.py` — 5 metrics (open-findings plus
+  QA-DUP/ESLINT/failed-indexers/quality-severity/health-ring), each **returns int divergence count**
+  (0 = healthy). Fixtures: `_seed_dup_pair`, `_seed_eslint_row`, `_insert_finding`, `_fresh_repo`
+  (real `store.connect` + `stack.common.ensure`).
+- **Suite:** `tests/detectors/phase4_audit_test.py` — 8 tests: BUG-015 recall (ESLINT row survives
+  auto-close; rule-not-run), F-41 (stub sub-indexer raise → `failed_indexers` names surfaced),
+  BUG-014 (coverage reads given root — 1699≠cwd), F-01/BUG-013 (score reacts to real critical/high),
+  CORE-30 (empty repo ring ≠ 50 + finding-sensitive) **+ 2 PRECISION** (stale row of a RAN rule still
+  closes; clean audit reports `failed_indexers == []`). **All 8 failed pre-fix, all pass post-fix.**
+- **Fixes applied LAST (product-wide):**
+  - `analysis.py`: added `_open_findings(con)` (reads the stack findings table directly —
+    `nextjs.list_findings` never existed); `gapfill.coverage(root)` threaded (BUG-014); quality_score =
+    `max(0, 100 − critical*20 − high*10)` from real findings, no fallback-80 (F-01/BUG-013/CORE-27);
+    empty-repo literal-50 early-return removed → derived ring still penalized by findings (CORE-30);
+    critical/high lists read `_open_findings`.
+  - `stack/rules.py`: extracted `enabled_rules(root, cfg)` (built-in + custom minus `ignore_rules`),
+    shared by `run_rules` and the audit sweep (BUG-015).
+  - `stack/audit.py`: sub-indexer failures now surface as `failed_indexers` (F-24/F-41, no bare
+    swallow); auto-close sweep scoped to `WHERE rule IN (enabled_ids) AND id NOT IN (seen)`.
+- **Live after-values (LEDGER §2):** overall health score **55.3 → 61.3**; quality_score 100 at 0
+  findings (no forced 80); audit open=0 with 0 wrong flips; `run_rules` 57 findings (medium 41, low 16);
+  index intact (156 files, 1699 symbols). `grep list_findings lib/` → 0.
+- **Full `tests/detectors/`: 61 passed in 94s** (S1×2 + S2×3 + S5×7 + S3×12 + S4×15 + Ph3×14 + Ph4×8).
+  `tests/data/clean_ref/` untouched. **TRACKER Phase 4: 5/5 proven+precision+locked+fixes; Total 13/53.**
+  LEDGER §2 after-values + §3 precision rows flipped; §1 F4 budget within.
+- **Pre-existing unrelated failures:** `tests/test_integration.py` (test_gapfill_integration,
+  test_health_score_integration, test_impact_analysis_integration) — caller passes
+  `indexer.sync(con, cfg)` but sync takes `(root=None, full=False, do_embed=True, progress=None)` →
+  `TypeError: expected str ... not Connection` in base.data_dir; plus pytest-asyncio deprecation
+  warnings from `tests/terminal_dashboard/conftest.py`. Not caused by Ph4 edits.
+
 ## Docs (all listed values live; `09` intact)
 - `09-bugs-and-issues.md` — untouched source of truth (869 lines).
 - `PROFILE.cip.md` — CIP wiring + per-language instruments (NEW).
@@ -203,33 +234,29 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
 - `DESIGN.md`, `LEDGER.md`, `DEPENDENCIES.md`, `TRACKER.md`, `10-selfcheck-enhancement-plan.md` — v2.
 - `tests/detectors/` — s1_swallow_scanner.py + s1_swallow_discipline_test.py + s2_static_lint_gate_test.py
   + s3_conformance.py + s3_conformance_test.py + s4_config_schema_test.py + s5_doctor_skeleton_test.py
-  + s6_index_integrity.py + phase3_index_test.py (**53 tests green**).
+  + s6_index_integrity.py + phase3_index_test.py + s6_audit_integrity.py + phase4_audit_test.py
+  (**61 tests green**).
 - `lib/cipkg/doctor.py` — product surface: `cip doctor` + `cip doctor --static/--config/--runtime`.
 - `lib/cipkg/indexer.py` — F-22 (`resolve_import`) + F-23 (`build_tested_by`) fixes.
 - `lib/cipkg/gatekeeper.py` + `lib/cipkg/base.py` — F-42 backup-tree gates (ingestion + `iter_files`).
+- `lib/cipkg/analysis.py` + `lib/cipkg/stack/rules.py` + `lib/cipkg/stack/audit.py` — Ph4 health-truth
+  (`_open_findings`, `enabled_rules`, `failed_indexers`, scoped auto-close).
 
-## Cold handoff — resume Phase 4 audit/health honesty (next unit)
+## Cold handoff — resume Phase 0 undefined names & broken imports (next unit)
 
 1. **Restore:** Read RUNBOOK (§0 then §6) + TRACKER + LEDGER + DEPENDENCIES §2 + this file.
-   Phase S + Phase 3 are regression-locked green (**53 tests**).
-2. **Phase 4 scope (TRACKER ranks 4–8, dashboard-critical):**
-   - BUG-013 / F-01 / CORE-27 — health score / quality_score truth (analysis.py health ring).
-   - BUG-015, BUG-014, CORE-30 (empty-repo health ring renders "run sync", not 50), F-24/F-41 (audit
-     silent-path — dep S1: findings auto-flipped to `fixed` every audit).
-   - Detectors: `AUDIT-FINDING-AUTO-CLOSED`, `AUDIT-SILENT-NO-OP`, health-integrity note (F4 family in
-     LEDGER §1 budget: rules 2 + 1 note, doctor 0).
-3. **Method (RUNBOOK §4):** before building Ph4 detectors, route the index through the REAL audit/analyze
-   surfaces (`cip analyze`, `cip audit`) now that the backing index is clean (156 files, 0 backups) and
-   capture the live Ph4 KPI baselines into LEDGER §2 (currently blank): quality_score variance, findings
-   auto-flipped per audit, silent-no-op audits, empty-repo health ring rendering.
+   Phases S + 3 + 4 are regression-locked green (**61 tests**).
+2. **Phase 0 scope (TRACKER ranks 9–17):** most retired mechanically by S2/S3 gates. Apply the
+   remaining one-line fixes (F-06, F-20, F-31, ...) after re-running
+   `conformance_checks('lib/cipkg','cipkg')` and scrubbing the S3 53-finding list to 0. **ALSO add the
+   `cli.py __main__` guard** — `python -m cipkg.cli <cmd>` must not silently exit 0 doing nothing
+   (AGENTS.md documents the `-m` form).
+3. **After Phase 0:** Phase 1 (F-16 21 dispatch gaps, F-15 arity) → Phase 2 (config; fix
+   `config.default.toml` invalid TOML and flip the S4 invariant) → Phase 5 → manual M1–M4, updating
+   TRACKER/LEDGER/CHECKPOINT after each.
 4. **Environment:** Windows, pwsh, py 3.14.4. `python -m pytest tests/detectors/ -o addopts="" -q`
-   (current = **53 passing**). Measurement only with `do_embed=False`; `python -m cipkg.cli` is a silent
-   no-op (no `__main__` guard in `lib/cipkg/cli.py` — replay with
-   `PYTHONPATH=$PWD/lib python -c "from cipkg import indexer; indexer.sync('.', full=True, do_embed=False)"`).
-5. **After Ph4:** Phase 0 (apply S2/S3 one-line fixes; scrub the S3 53-finding list with
-   `conformance_checks('lib/cipkg','cipkg')` → 0; ALSO add the missing `cli.py __main__` guard) → Phase 1
-   (F-16 21 dispatch gaps, F-15 arity) → Phase 2 (config; fix `config.default.toml` invalid TOML and flip
-   the S4 invariant) → Phase 5 → manual M1–M4, updating TRACKER/LEDGER/CHECKPOINT after each.
+   (current = **61 passing**). Measurement only with `do_embed=False`; replay full rebuild with
+   `PYTHONPATH=$PWD/lib python -c "from cipkg import indexer; indexer.sync('.', full=True, do_embed=False)"`.
 
 ## Guardrails
 - Do NOT edit `09-bugs-and-issues.md`.

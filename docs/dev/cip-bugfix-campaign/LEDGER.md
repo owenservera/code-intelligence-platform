@@ -20,7 +20,7 @@ fixture repo). A detector is proven only when it fires on BROKEN and is silent o
 | F0 STATIC | rules 2 · doctor 1 | — | ☐ within |
 | F1 REACH | rules 3 · doctor 0 | — | ☐ within |
 | F3 INDEX | rules 3 · doctor 1 | +s6 detector module, +14 index tests, `_is_backup_path`/gatekeeper segment predicates, `build_tested_by` rewrite (F-23) — tiny, within | ☑ within |
-| F4 AUDIT | rules 2 + 1 note · doctor 0 | — | ☐ within |
+| F4 AUDIT | rules 2 + 1 note · doctor 0 | +s6_audit_integrity module, +8 tests, `enabled_rules()` shared helper, `failed_indexers` surfacing — tiny, within | ☑ within |
 | F5 BEHAVIOR | rules 1 · doctor 1 | — | ☐ within |
 | tests/detectors | +1 pytest file per family | — | ☐ within |
 | **Total net-new LOB** | target ≤ 1,200 | — | ☐ within |
@@ -38,10 +38,10 @@ Rule: exceeding a budget forces consolidation (merge family rules) before more w
 | `tested_by` noise count (dst not symbol id) | INDEX-TESTED-BY-NOISE (Ph3) | 4,462 (pre-re-sync); noise after re-sync | ≤10 | **159 total, 0 noise** (all src = real symbol id, non-backup) | ☑ |
 | backup/duplicate % of indexed files | INDEX-BACKUP-POLLUTION (Ph3) | 76% (575/753) | 0% | **0.0%** — files 753→156 (575 backup copies + stale rows pruned) | ☑ |
 | QA-UNTESTED-HOT findings (spurious) | Ph3/Ph4 | 30 (cap, all noise) | 0 meaningful-relative | | |
-| quality_score variance across 2 repos | health-integrity (Ph4) | constant 80 | varies; no forced fallback | | |
-| findings auto-flipped to `fixed` per audit | AUDIT-FINDING-AUTO-CLOSED (Ph4) | (live value) | 0 | | |
-| silent-no-op audits (0 findings, sub-indexers skipped) | AUDIT-SILENT-NO-OP (Ph4) | (live value) | 0 | | |
-| empty-repo health ring | CORE-30 (Ph4) | renders 50 | renders "run sync" state | | |
+| quality_score variance across 2 repos | health-integrity (Ph4) | constant 80 (fallback on nonexistent nextjs.list_findings) | varies; no forced fallback | **100 at 0 findings (live), penalized by real critical/high counts; live health score 55.3 → 61.3 (+6.0 = 0.3×20)** | ☑ |
+| findings auto-flipped to `fixed` per audit | AUDIT-FINDING-AUTO-CLOSED (Ph4) | ESLINT:/custom/tauri rows retired by every stack audit | 0 | **0 wrong flips — sweep scoped to rules that RAN (`rule IN enabled_ids`); ESLINT row survives (RECALL test); stale row of a run rule still closes (PRECISION)** | ☑ |
+| silent-no-op audits (0 findings, sub-indexers skipped) | AUDIT-SILENT-NO-OP (Ph4) | nextjs.prisma indexer failures swallowed by log_swallowed | 0 | **0 silent — result carries `failed_indexers` (stub-raise → 2 surfaced, not swallowed); clean audit reports `[]`** | ☑ |
+| empty-repo health ring | CORE-30 (Ph4) | renders literal 50 | renders "run sync" state | **derived ring (60 at 0 findings; lower with a critical) — never 50, still finding-sensitive** | ☑ |
 | `cip X` "unknown command" count | S3 / Ph1 | 21 | 0 | | |
 | clipboard-broken registry cards (never-fire errors) | S3 (F-15/F-17/CORE-5) | 16 | 0 | | |
 | conformance findings on lib/cipkg (S3 engine, all CODE-* rules) | S3 | 53 (21 UNDISPATCHED, 1 MISROUTED, 2 ARITY, 1 MISSING-MODULE, 28 MISSING-SYMBOL) | 0 (as fixes land Ph0/1/3) | | |
@@ -69,9 +69,9 @@ Record after-values as fixes land. "report-only" rows track transparency, not a 
 | INDEX-IMPORT-RESOLUTION (F3) | ☑ (fires on pre-fix: resolve_import returned None for multi-seg `.stack.common`/`.memory.*` and emitted `lib/cipkg/.base.py` artifacts; unit cases now assert correct targets) | FP=0 (only `cli.py .ingest` unresolved — genuinely-broken module, not a resolver artifact; synthetic clean pkg resolves 100%) | report-only total metric | ☑ locked in `phase3_index_test.py` |
 | INDEX-TESTED-BY-NOISE (F3) | ☑ (fires on broken edges: backup-src + missing-src counted) | FP=0 (clean synthetic DB: real tested_by silent) | | ☑ locked |
 | INDEX-BACKUP-POLLUTION (F3) | ☑ (detector counts backup-segment files when present; synthetic backup tree the OLD scanner indexed now stays clean — flip) | FP=0 (segment-aware: test filenames *containing* `backup_` are NOT flagged; sync_global source files remain indexed) | | ☑ locked at both surfaces (base.iter_files + gatekeeper `_scan`/`_decide`) |
-| AUDIT-FINDING-AUTO-CLOSED (F4) | ☐ | FP=0 | | |
-| AUDIT-SILENT-NO-OP (F4) | ☐ | FP=0 | | |
-| health-integrity note (F4) | ☐ | FP=0 | | |
+| AUDIT-FINDING-AUTO-CLOSED (F4) | ☑ (8/8 suite: ESLINT row survives auto-close when its rule didn't run; stale row of a RAN rule still closes) | FP=0 (clean audit root: no findings seeded → sweep no-op; clean_ref untouched) | | ☑ locked in `phase4_audit_test.py` |
+| AUDIT-SILENT-NO-OP (F4) | ☑ (stub sub-indexer raises → `failed_indexers` carries 2 names; audits never report success under partial failure) | FP=0 (fully-functioning nest → `failed_indexers == []`, report clean) | | ☑ locked in `phase4_audit_test.py` |
+| health-integrity note (F4) | ☑ (no-quality-fallback fixture → real sev counts drive score; empty repo ring ≠ 50 and reacts to one critical) | FP=0 (bogus `list_findings` path removed — no AttributeError swallow; clean repo derives 100/60 without forcing) | | ☑ locked in `phase4_audit_test.py` |
 | CONFIG-SCHEMA-DRIFT / KEY-UNUSED / PORT / PROFILE-SILENT-FAIL + FILE-UNPARSEABLE (S4/S5 CONFIG-*) | ☑ (all 7 rules fire on this repo; `cip doctor --config` total=8 fresh findings; S4 locks per-rule refs CORE-2/10/39/40/42 + F-11 + FILE-UNPARSEABLE evidence) | FP=0 (reconciled virtual config + per-rule surgical: one-missing-anatomy → only its rule; port==code-scan silent; schema==store silent) | | S4 + S5 tests gate both directions; S4 loader test proves no v2 fall-through on decode error |
 | CODE-UNSAFE-PATTERN (F5) | ☐ | FP=0 | | |
 | doctor --runtime probes (S3/S5) | ☑ (only measured claims; RUNTIME-DAEMON-DOWN fires, no fake ok) | FP=0 (probe failure surfaces as RUNTIME-PROBE-FAILED, never silence) | | S5 test asserts evidence required | |

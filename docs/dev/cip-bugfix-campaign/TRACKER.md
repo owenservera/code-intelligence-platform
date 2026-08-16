@@ -35,15 +35,15 @@ Suite: `tests/detectors/phase3_index_test.py` (14 tests) + `s6_index_integrity.p
 | 2 | F-42 | bugs/F-42 | instance | ☑ INDEX-BACKUP-POLLUTION | ☑ 0 FP / segment-aware | ☑ | ☑ | 575→0 files, 76.4%→0 | gatekeeper `_scan`/`_decide` + base F-42 |
 | 3 | F-23 | bugs/F-23 | instance | ☑ INDEX-TESTED-BY-NOISE | ☑ clean DB silent | ☑ | ☑ | 4462→159, noise 0 | dep F-22 |
 
-## Phase 4 — Audit/health honesty (rank 4–8, dashboard-critical)
+## Phase 4 — Audit/health honesty (rank 4–8, dashboard-critical) **☑ LANDED**
 
 | Rank | Finding | Folder | Level | Detector proven(b+c) | Precision | Locked | Fix | KPI | Assessment |
 |---|---|---|---|---|---|---|---|---|---|
-| 4 | BUG-013 / F-01 / CORE-27 | bugs/BUG-013 | instance | | | | | | dep F-01(S3) |
-| 5 | BUG-015 | bugs/BUG-015 | instance | | | | | | |
-| 6 | F-24 / F-41 | bugs/F-24 | instance | | | | | | dep S1 |
-| 7 | BUG-014 | bugs/BUG-014 | instance | | | | | | |
-| 8 | CORE-30 | bugs/CORE-30 | instance | | | | | | |
+| 4 | BUG-013 / F-01 / CORE-27 | bugs/BUG-013 | instance | ☑ | ☑ | ☑ | ☑ | `quality_score` 80→100(+punishment by real sev counts); live health 55.3→61.3 | `_open_findings()` reads the findings table (nextjs.list_findings never existed) |
+| 5 | BUG-015 | bugs/BUG-015 | instance | ☑ | ☑ | ☑ | ☑ | findings auto-flipped to `fixed` = 0 (sweep scoped to run rules) | ESLINT:/custom/tauri rows survive every audit |
+| 6 | F-24 / F-41 | bugs/F-24 | instance | ☑ | ☑ | ☑ | ☑ | silent-no-op audits = 0 (failed_indexers surfaced) | result carries `failed_indexers`; no bare swallow |
+| 7 | BUG-014 | bugs/BUG-014 | instance | ☑ | ☑ | ☑ | ☑ | coverage reads requested root (3≠cwd live 1699 flips clean) | `gapfill.coverage(root)` threaded |
+| 8 | CORE-30 | bugs/CORE-30 | instance | ☑ | ☑ | ☑ | ☑ | empty-repo ring != 50, still finding-sensitive | literal 50 early-return removed |
 
 ## Phase 0 — Static undefined-name / broken imports (rank 9–17; mostly retired by S2/S3)
 
@@ -122,10 +122,10 @@ Suite: `tests/detectors/phase3_index_test.py` (14 tests) + `s6_index_integrity.p
 |---|---|---|---|---|---|
 | S | 5 mechanisms | 5/5 | 5/5 | 5/5 | 1/5 |
 | 3 | 3 | 3/3 | 3/3 | 3/3 | 3/3 |
-| 4 | 5 | 0/5 | 0/5 | 0/5 | 0/5 |
+| 4 | 5 | 5/5 | 5/5 | 5/5 | 5/5 |
 | 0 | 9 | 0/9 | 0/9 | 0/9 | 0/9 |
 | 1 | 14 | 0/14 | 0/14 | 0/14 | 0/14 |
 | 2 | 6 | 0/6 | 0/6 | 0/6 | 0/6 |
 | 5 | 11 | 0/11 | 0/11 | 0/11 | 0/11 |
 | manual | 4 | — | — | — | — |
-| **Total** | **53 rows** | **8/53** | **8/53** | **8/53** | **4/53** |
+| **Total** | **53 rows** | **13/53** | **13/53** | **13/53** | **9/53** |

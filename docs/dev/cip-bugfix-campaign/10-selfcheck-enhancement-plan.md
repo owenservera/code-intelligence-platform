@@ -163,6 +163,13 @@ rules (circular/orphan/layer) now run on a clean 156-file index instead of 753 f
 - health-integrity note ("quality_score forced" badge gone once real).
 `cip analyze` shows a varying, real quality score; `cip audit` shows skipped-subindexer warnings.
 
+**STATUS: ☑ LANDED (detect-first, regression-locked).** `s6_audit_integrity.py` + `phase4_audit_test.py`
+(8 tests: 6 RECALL flips + 2 PRECISION, all failed pre-fix → pass post-fix). Fixes in
+`analysis.py` (`_open_findings`, root-threaded coverage, real severity-derived quality, no literal-50),
+`stack/rules.py` (`enabled_rules`), `stack/audit.py` (`failed_indexers` surfacing, sweep scoped to run
+rules). Live health 55.3 → 61.3, quality 100 at 0 findings, audit open=0 with 0 wrong auto-closes.
+Full detector suite **61 passed**.
+
 ---
 
 ## 5. Phase 0 — Undefined names & broken imports  (rank 9–17; mostly retired by S2/S3)
