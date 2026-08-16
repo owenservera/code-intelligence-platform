@@ -7,11 +7,9 @@ execution with context awareness, progress tracking, and error recovery.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any, Callable
-from datetime import datetime
+from typing import Dict, List, Optional, Any
 from enum import Enum
 import time
-import threading
 import queue
 
 
@@ -109,7 +107,7 @@ class IntelligentCommandExecutor:
         try:
             from .context_manager import ContextManager
             return ContextManager(self.root)
-        except Exception as e:
+        except Exception:
             # Return None if context manager fails to initialize
             return None
     
@@ -118,7 +116,7 @@ class IntelligentCommandExecutor:
         try:
             from .learning_system import LearningSystem
             return LearningSystem(self.root)
-        except Exception as e:
+        except Exception:
             # Return None if learning system fails to initialize
             return None
     
@@ -134,7 +132,7 @@ class IntelligentCommandExecutor:
             from .workflow_engine import WorkflowExecutor
             from .base import load_config
             return WorkflowExecutor(self.root, load_config(self.root))
-        except Exception as e:
+        except Exception:
             # Return None if workflow executor fails to initialize
             return None
     
@@ -293,7 +291,7 @@ class IntelligentCommandExecutor:
                 recent_files=unified_context.repository.recent_files,
                 session_id=self._get_session_id()
             )
-        except Exception as e:
+        except Exception:
             # Return minimal context on error
             return ExecutionContext(
                 root=self.root,

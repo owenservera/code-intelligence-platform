@@ -10,8 +10,14 @@ Proves the conformance detector (`s3_conformance.conformance_checks`):
 - PRECISION: 0 findings on a synthetic clean package (all wiring consistent)
   and on the clean_ref fixture.
 
-When Phase 0/1 apply the fixes these RECALL assertions flip to
-clean-assertions (see S1 flip for the pattern).
+Phase 0 flips (RUNBOOK §4 step 7 — signal flips healthy): F-34 (cli),
+F-35/CORE-5 (registry handler imports), F-13 (workflow_engine), F-20
+(FilterEngine.rank), F-31 (session runtime_adapters + map_ keys), F-13-cli
+(.ingest) and F-35-cli (mcp_main) now assert the evidence is GONE from the live
+CLI surface. The remaining live findings are Phase 1 dispatch gaps (F-16/F-17/
+F-15) and legacy-frontend deletion targets (terminal_dashboard/web_server/
+watcher — replaced by the new frontend), so the RECALL assertions for those
+stay.
 """
 
 from __future__ import annotations
@@ -67,48 +73,61 @@ def test_s3_recall_f15_arity_mismatch():
     assert any("handle_rebuild_command" in e for e in ev)
 
 
-def test_s3_recall_f34_selftest_symbol():
-    """F-34: selftest.selftest does not exist (cli + terminal_dashboard)."""
+def test_s3_clean_path_f34_selftest_symbol():
+    """F-34 (flip): cli.py imports run_selftest, not the nonexistent selftest.
+
+    The remaining `terminal_dashboard.py:985 from cipkg.selftest import
+    selftest` site is a legacy-TUI deletion target (new frontend replaces it)
+    and stays a documented pending finding, not a live-surface defect.
+    """
     ev = _evidence("CODE-MISSING-SYMBOL")
-    assert any("from .selftest import selftest" in e for e in ev)
-    assert any("terminal_dashboard" in e and "selftest" in e for e in ev)
+    assert not any("from .selftest import selftest" in e for e in ev)
+    assert not any("cli.py" in e and "selftest" in e for e in ev)
 
 
-def test_s3_recall_f35_registry_handler_imports():
-    """F-35/CORE-5: command_registry imports handlers cli.py never defines."""
+def test_s3_clean_path_f35_registry_handler_imports():
+    """F-35/CORE-5 (flip): cli.py now defines every registry-imported handler."""
     ev = _evidence("CODE-MISSING-SYMBOL")
-    missing = ("handle_gate_command", "handle_deps_command", "handle_predict_command",
-               "handle_coverage_command", "handle_env_command", "handle_api_command")
-    for name in missing:
-        assert any(f"from .cli import {name}" in e for e in ev), name
+    for name in ("handle_gate_command", "handle_deps_command", "handle_predict_command",
+                 "handle_coverage_command", "handle_env_command", "handle_api_command",
+                 "handle_blame_command", "handle_circular_command", "handle_dead_command",
+                 "handle_features_command", "handle_logs_command", "handle_metrics_command",
+                 "handle_migrations_command", "handle_refactors_command"):
+        assert not any(f"from .cli import {name}" in e for e in ev), name
 
 
-def test_s3_recall_f13_context_imports():
-    """F-13: workflow_engine imports of cipkg.audit / cipkg.impact."""
+def test_s3_clean_path_f13_context_imports():
+    """F-13 (flip): workflow_engine imports resolve to cipkg.stack.audit/impact."""
     ev = _evidence("CODE-MISSING-SYMBOL") + _evidence("CODE-MISSING-MODULE")
-    assert any("workflow_engine" in e and "import audit" in e for e in ev)
-    assert any("workflow_engine" in e and "import impact" in e for e in ev)
+    assert not any("workflow_engine" in e and "import audit" in e for e in ev)
+    assert not any("workflow_engine" in e and "import impact" in e for e in ev)
 
 
 def test_s3_recall_module_attribute_calls():
-    """F-21/F-31/F-32: attribute calls on attributes the modules never export."""
+    """F-21/F-31/F-32: attribute calls on attributes the modules never export.
+
+    F-31 (retrieve.runtime_adapters.broken) was fixed in Phase 0 — flipped to
+    clean. F-21 (retrieve.hybrid_search, web_server) and F-32
+    (indexer.mark_for_reindex, watcher) are legacy-frontend deletion targets
+    and remain live findings until the Phase 1/5 sweep.
+    """
     ev = _evidence("CODE-MISSING-SYMBOL")
+    assert not any("retrieve.runtime_adapters.broken" in e for e in ev)  # F-31 fixed
     assert any("retrieve.hybrid_search" in e for e in ev)          # F-21 /api/search 500
-    assert any("retrieve.runtime_adapters.broken" in e for e in ev)  # F-31 session context
     assert any("indexer.mark_for_reindex" in e for e in ev)        # F-32 watcher re-index
 
 
-def test_s3_recall_class_instance_member():
-    """F-20: FilterEngine has no 'rank' member."""
+def test_s3_clean_path_f20_class_instance_member():
+    """F-20 (flip): SuggestionEngine now calls FilterEngine.filter (rank gone)."""
     ev = _evidence("CODE-MISSING-SYMBOL")
-    assert any("filter_engine.rank" in e for e in ev)
+    assert not any("filter_engine.rank" in e for e in ev)
 
 
-def test_s3_recall_new_broken_import():
-    """cli.py imports from a missing module (ingest) and server.mcp_main."""
+def test_s3_clean_path_new_broken_import():
+    """cli.py (flip): .ingest and server.mcp_main imports now resolve."""
     ev = _evidence("CODE-MISSING-MODULE") + _evidence("CODE-MISSING-SYMBOL")
-    assert any("cli.py" in e and "ingest" in e for e in ev)
-    assert any("from .server import mcp_main" in e for e in ev)
+    assert not any("cli.py" in e and "ingest" in e for e in ev)
+    assert not any("from .server import mcp_main" in e for e in ev)
 
 
 # ---------------------------------------------------------------------------

@@ -49,15 +49,15 @@ Suite: `tests/detectors/phase3_index_test.py` (14 tests) + `s6_index_integrity.p
 
 | Rank | Finding | Folder | Level | Detector proven(b+c) | Precision | Locked | Fix | KPI | Assessment |
 |---|---|---|---|---|---|---|---|---|---|
-| 9 | BUG-005 / F-02 | bugs/BUG-005 | instance | | | | | | dep S2 |
-| 10 | F-06 | bugs/F-06 | instance | | | | | | dep S2 |
-| 11 | F-09 | bugs/F-09 | instance | | | | | | retired-by-S2 |
-| 12 | F-34 | bugs/F-34 | instance | | | | | | retired-by-S3 |
-| 13 | F-35 | bugs/F-35 | instance | | | | | | retired-by-S3 |
-| 14 | CORE-5 | bugs/CORE-5 | instance | | | | | | dep F-34,F-35 (S3) |
-| 15 | F-13 | bugs/F-13 | instance | | | | | | retired-by-S3 |
-| 16 | F-20 | bugs/F-20 | instance | | | | | | retired-by-S3 |
-| 17 | F-31 | bugs/F-31 | instance | | | | | | retired-by-S3 |
+| 9 | BUG-005 / F-02 | bugs/BUG-005 | instance | ☑ | ☑ | ☑ | ☑ | | dep S2 — fixed Ph0 |
+| 10 | F-06 | bugs/F-06 | instance | ☑ | ☑ | ☑ | ☑ | | dep S2 — fixed Ph0 |
+| 11 | F-09 | bugs/F-09 | instance | ☑ | ☑ | ☑ | ☑ | | retired-by-S2 — targeted scrub Ph0 |
+| 12 | F-34 | bugs/F-34 | instance | ☑ | ☑ | ☑ | ☑ | | retired-by-S3 — fixed Ph0 |
+| 13 | F-35 | bugs/F-35 | instance | ☑ | ☑ | ☑ | ☑ | | retired-by-S3 — fixed Ph0 |
+| 14 | CORE-5 | bugs/CORE-5 | instance | ☑ | ☑ | ☑ | ☑ | | dep F-34,F-35 (S3) — fixed Ph0 |
+| 15 | F-13 | bugs/F-13 | instance | ☑ | ☑ | ☑ | ☑ | | retired-by-S3 — fixed Ph0 |
+| 16 | F-20 | bugs/F-20 | instance | ☑ | ☑ | ☑ | ☑ | | retired-by-S3 — fixed Ph0 |
+| 17 | F-31 | bugs/F-31 | instance | ☑ | ☑ | ☑ | ☑ | | retired-by-S3 — fixed Ph0 |
 
 ## Phase 1 — Dead code / dispatch coverage (rank 18–31; class-workflow, deletions skip docs)
 
@@ -123,9 +123,9 @@ Suite: `tests/detectors/phase3_index_test.py` (14 tests) + `s6_index_integrity.p
 | S | 5 mechanisms | 5/5 | 5/5 | 5/5 | 1/5 |
 | 3 | 3 | 3/3 | 3/3 | 3/3 | 3/3 |
 | 4 | 5 | 5/5 | 5/5 | 5/5 | 5/5 |
-| 0 | 9 | 0/9 | 0/9 | 0/9 | 0/9 |
+| 0 | 9 | 9/9 | 9/9 | 9/9 | 9/9 |
 | 1 | 14 | 0/14 | 0/14 | 0/14 | 0/14 |
 | 2 | 6 | 0/6 | 0/6 | 0/6 | 0/6 |
 | 5 | 11 | 0/11 | 0/11 | 0/11 | 0/11 |
 | manual | 4 | — | — | — | — |
-| **Total** | **53 rows** | **13/53** | **13/53** | **13/53** | **9/53** |
+| **Total** | **53 rows** | **22/53** | **22/53** | **22/53** | **18/53** |

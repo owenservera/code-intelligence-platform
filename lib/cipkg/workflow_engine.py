@@ -7,7 +7,6 @@ for guided multi-step operations.
 
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Callable
-from datetime import datetime
 from enum import Enum
 import os
 import json
@@ -549,7 +548,7 @@ class WorkflowExecutor:
         changed_files = context.get('changed_files', [])
         
         try:
-            from cipkg import audit
+            from cipkg.stack import audit
             
             audit_results = []
             total_issues = 0
@@ -581,16 +580,16 @@ class WorkflowExecutor:
         changed_files = context.get('changed_files', [])
         
         try:
-            from cipkg import impact
+            from cipkg.stack import impact
             
             impact_results = []
             high_impact_count = 0
             
             for file_path in changed_files:
                 try:
-                    result = impact.analyze(self.root, file_path)
+                    result = impact.impact(self.root, file_path)
                     impact_results.append(result)
-                    if result.get('severity') == 'high':
+                    if result.get('risk') == 'high':
                         high_impact_count += 1
                 except Exception:
                     # Skip files that can't be analyzed

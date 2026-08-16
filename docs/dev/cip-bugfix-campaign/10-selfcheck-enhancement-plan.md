@@ -176,6 +176,7 @@ Full detector suite **61 passed**.
 
 **FIX (defects — apply LAST):** BUG-005/F-02, F-06, F-09, F-34, F-35, CORE-5, F-13, F-20, F-31 — most are
 already mechanically handled by S2 (lint) + S3 (conformance); Phase 0 applies the remaining one-line fixes.
+✅ **LANDED 2026-08-16** — all 9 rows fixed + `cli.py` `__main__` guard; regression-locked (61 tests green).
 **ENHANCE (detector):** `CODE-UNDEFINED-NAME` + `CODE-MISSING-SYMBOL` rules in `stack/rules.py` (also a
 `cip doctor --static` step) = the continuous audit-side surface; S2/S3 are the build-time gates.
 **Acceptance:** pre-S2/S3 the gates listed ≥8 findings; post-fix `cip doctor --static` is clean and the
@@ -276,13 +277,13 @@ Columns: **Rank** · **Finding (09 ref)** · **Level** · **Detector proven(b+c)
 ### Phase 3 — import-graph / tested_by (rank 1–3)
 | Full mapping per DEPENDENCIES.md | Detector proven(b+c) | Precision | Locked | Fix | KPI |
 |---|---|---|---|---|---|
-| F-22 · F-42 · F-23 | ☑ (s6_index_integrity.py + phase3_index_test.py, 14 tests) | ☑ (0-FP segment-aware; only cli.ingest unresolved) | ☑ | ☑ | ☑ 753→156 files; 76%→0 pollution; imports 12→260; in-repo 99.79%; tested_by 4462→159, noise 0 |
+| F-22 · F-42 · F-23 | ☑ (s6_index_integrity.py + phase3_index_test.py, 14 tests) | ☑ (0-FP segment-aware; repo flip → 100% after Ph0) | ☑ | ☑ | ☑ 753→156 files; 76%→0 pollution; imports 12→260; in-repo 99.79%→100%; tested_by 4462→159, noise 0 |
 
 ### Phase 4 — audit/health (rank 4–8)
 | BUG-013/F-01/CORE-27 · BUG-015 · F-24/F-41 · BUG-014 · CORE-30 | ☐ | ☐ | ☐ | ☐ | ☐ |
 
 ### Phase 0 — static names (rank 9–17)
-| BUG-005/F-02 · F-06 · F-09 · F-34 · F-35 · CORE-5 · F-13 · F-20 · F-31 | ☐ | ☐ | ☐ | ☐ | ☐ |
+| BUG-005/F-02 · F-06 · F-09 · F-34 · F-35 · CORE-5 · F-13 · F-20 · F-31 | ☑ (S2+S3 gates recall; S3 RECALL flips clean) | ☑ (clean_ref 0-FP) | ☑ | ☑ | ☑ conformance 53→29 (residual = Ph1 dispatch + legacy-frontend deletion targets); in-repo resolution 100%; `cli.py -m` works |
 
 ### Phase 1 — dead code / dispatch (rank 18–31)
 | F-16 · F-15 · F-25 · BUG-011/F-04 · F-26..F-29 · F-32 · F-38 · F-36 · F-37 · F-39 · F-40 | ☐ | ☐ | ☐ | ☐ | ☐ |

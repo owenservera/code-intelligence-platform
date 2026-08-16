@@ -5,7 +5,7 @@ import lancedb
 import pyarrow as pa
 import numpy as np
 from typing import List, Dict, Optional
-import os
+import json
 
 class LanceDBVectorStore:
     """LanceDB-based vector store with hybrid search capabilities."""
@@ -102,7 +102,6 @@ class LanceDBVectorStore:
 def migrate_sqlite_to_lancedb(sqlite_db: str, lancedb_path: str):
     """Migrate existing SQLite vectors to LanceDB."""
     import sqlite3
-    from .store import vector_matrix
     
     con = sqlite3.connect(sqlite_db)
     

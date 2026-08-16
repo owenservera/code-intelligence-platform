@@ -230,7 +230,7 @@ def explain(root, rel):
 # ---------- doc chunking: headings are the 'symbols' of prose ----------
 
 def chunk_markdown(path, source, cap=50):
-    chunks, cur, start, title = [], [], 1, path
+    chunks, cur, start = [], [], 1
     lines = source.splitlines()
     def flush(end):
         text = "\n".join(cur).strip()
@@ -241,7 +241,7 @@ def chunk_markdown(path, source, cap=50):
     for i, line in enumerate(lines):
         if re.match(r"^#{1,3} ", line) and cur:
             flush(i)
-            cur, start, title = [], i + 1, line.lstrip("# ").strip()
+            cur, start = [], i + 1
         cur.append(line)
     flush(len(lines))
     return chunks[:cap]

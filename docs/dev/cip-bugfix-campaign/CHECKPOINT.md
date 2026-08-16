@@ -14,10 +14,13 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
   itself. Portability = CIP dispatches detectors by file language (RUNBOOK §0, `PROFILE.cip.md` §2). We do
   NOT copy campaign docs into other repos.
 - **Phase S complete (systemic foundation, 5/5) + Phase 3 complete (index integrity, 3/3) + Phase 4
-  complete (audit/health honesty, 5/5).** Phases remaining: 0 → 1 → 2 → 5 → manual (DEPENDENCIES.md §2).
-- **Next unit: Phase 0 — undefined names & broken imports (ranks 9–17).** Mostly retired by S2/S3 gates;
-  apply the remaining one-line fixes (F-06, F-20, F-31, etc.) + add `cli.py` `__main__` guard
-  (`python -m cipkg.cli <cmd>` must not silently no-op). Then 1 → 2 → 5 → manual M1–M4.
+  complete (audit/health honesty, 5/5) + Phase 0 complete (undefined names & broken imports, 9/9).**
+  Phases remaining: 1 → 2 → 5 → manual (DEPENDENCIES.md §2).
+- **Next unit: Phase 1 — dead code / dispatch coverage (ranks 18–31).** 21 CODE-UNHANDLED-COMMAND gaps
+  (F-16), 2 CODE-ARITY-MISMATCH (F-15: `handle_analyze_command`/`handle_rebuild_command`), 1
+  CODE-MISROUTED-COMMAND (F-17: `verify-index`). Legacy-frontend deletion-target findings
+  (`terminal_dashboard.py:985`, `web_server.py:226/241/186`, `watcher.py:104`) clear in the Phase 1 sweep —
+  a brand-new frontend is being designed from scratch after this campaign, so those sites are NOT fixed.
 
 ## Completed this session (Phases S3 + S4 + Phase 4 landing)
 
@@ -227,6 +230,57 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
   `TypeError: expected str ... not Connection` in base.data_dir; plus pytest-asyncio deprecation
   warnings from `tests/terminal_dashboard/conftest.py`. Not caused by Ph4 edits.
 
+## Completed this session (Phase 0 — undefined names & broken imports, ranks 9–17)
+
+### One-line product fixes (detect-first, fix-last; regression-locked after)
+- **F-06** `retrieve.py:_external_search` — exception tuple `json.JSONDecodeError` referenced `json`
+  before the import (line 105 import, line 124 tuple) → `NameError` masking the real error. Fixed import
+  placement.
+- **F-13** `workflow_engine.py` — `from cipkg import audit` / `from cipkg import impact` (nonexistent
+  top-level modules; real names `cipkg.stack.audit` / `cipkg.stack.impact`) → audit/impact steps silently
+  no-op'd. Fixed to the real submodule paths.
+- **F-20** `suggestion_engine.py:663` — `self.filter_engine.rank(ranked)` but `FilterEngine` only defines
+  `filter()` → AttributeError on EVERY suggestion call. Fixed to `self.filter_engine.filter(ranked)`.
+- **F-31** `session.py` — `retrieve.runtime_adapters.broken` (no such attribute) + `map_()` key mismatch
+  (`totals.files` exists, `subsystems`/`total_files`/`overview` don't) → session context packet silently
+  empty. Fixed to `from .runtime_adapters import broken` and the real `map_` keys.
+- **BUG-005/F-02** `lancedb_store.py:55` — `json` never imported → NameError in `add_embeddings()`. Added
+  import.
+- **F-34** `cli.py` `handle_selftest_command` — `from .selftest import selftest` but `selftest.py` only
+  defines `run_selftest()` → `cip selftest` ImportError. Fixed to `run_selftest`.
+- **F-35** `cli.py` — `deps` parser registered + registry card `from .cli import handle_deps_command`, but
+  cli never imported it → `deps` broken in CLI AND registry. Wired the real `dependency_checker`
+  handler.
+- **CORE-5** — all 14 `CommandCard.handler` names (`gate, refactors, dead, circular, deps, coverage,
+  migrations, env, logs, metrics, features, api, blame, predict`) added as real handlers in `cli.py`
+  (13 → `gapfill.*`, `gate`/`refactors` → `stack.audit`, `predict` → `predict.predict_next_context`).
+- **Live-CLI broken imports found during wiring:** `handle_ingest_command` (`from .ingest import ingest`
+  → real `from .runtime_adapters import ingest`), `handle_mcp_command` (`server.mcp_main` → real
+  `server.mcp_stdio`), dispatch `map`→`summarize.map_`, `describe`→new `_server_describe` helper
+  calling `server.describe`.
+
+### `cli.py __main__` guard (CHECKPOINT Phase-0 item 2)
+- Added `if __name__ == "__main__":` guard so `python -m cipkg.cli <cmd>` actually runs instead of
+  silently exiting 0. Verified: `python -m cipkg.cli -h` prints usage; `map`/`describe` return real JSON.
+  `selftest` still hangs >120s (embed service autostart) — known Phase 2 config item, NOT F-34 scope.
+
+### Conformance + precision (RUNBOOK §4 step 11)
+- S3 conformance `conformance_checks('lib/cipkg','cipkg')`: **53 → 29** after Phase 0. The 29 remaining =
+  21 CODE-UNHANDLED-COMMAND (F-16) + 1 CODE-MISROUTED-COMMAND (F-17) + 2 CODE-ARITY-MISMATCH (F-15) —
+  all Phase 1 dispatch — plus 5 CODE-MISSING-SYMBOL that are **legacy-frontend deletion targets**
+  (`terminal_dashboard.py:985` selftest, `web_server.py:226` ImpactAnalyzer, `web_server.py:241`
+  GapFiller, `watcher.py:104` mark_for_reindex F-32, `web_server.py:186` hybrid_search F-21).
+- In-repo import resolution: **99.79% (486/487) → 100% (487/487)** — the final broken ref
+  `cli.py .ingest` fixed. `phase3_index_test.py::test_f22_repo_sole_unresolved_is_known_broken_ref`
+  FLIPPED to assert `missed == set()` (repo now resolves 100%).
+- S3 RECALL tests flipped clean-path for every Phase-0 fix (F-34 selftest symbol, F-35 registry handler
+  imports ×14, F-13 workflow_engine, F-20 filter_engine, `.ingest`/`mcp_main` broken-import). S2 gate
+  test re-verified. **Full `tests/detectors/`: 61 passed in 69s** (S1×2 + S2×3 + S5×7 + S3×12 + S4×15 +
+  Ph3×14 + Ph4×8). `tests/data/clean_ref/` untouched.
+- **TRACKER Phase 0: 9/9 proven(b+c) + precision + locked + fixes; Total 22/53 detectors/precision/
+  locked, 18/53 fixes.** LEDGER §2 after-values (import resolution 100%, conformance 29, undefined-name
+  scrub) + §3 precision rows updated. `09-bugs-and-issues.md` left UNTOUCHED (guardrail).
+
 ## Docs (all listed values live; `09` intact)
 - `09-bugs-and-issues.md` — untouched source of truth (869 lines).
 - `PROFILE.cip.md` — CIP wiring + per-language instruments (NEW).
@@ -241,22 +295,31 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
 - `lib/cipkg/gatekeeper.py` + `lib/cipkg/base.py` — F-42 backup-tree gates (ingestion + `iter_files`).
 - `lib/cipkg/analysis.py` + `lib/cipkg/stack/rules.py` + `lib/cipkg/stack/audit.py` — Ph4 health-truth
   (`_open_findings`, `enabled_rules`, `failed_indexers`, scoped auto-close).
+- Phase 0 fixes: `lib/cipkg/retrieve.py` (F-06), `lib/cipkg/workflow_engine.py` (F-13),
+  `lib/cipkg/suggestion_engine.py` (F-20), `lib/cipkg/session.py` (F-31), `lib/cipkg/lancedb_store.py`
+  (BUG-005), `lib/cipkg/cli.py` (F-34/F-35/CORE-5/__main__ guard/ingest→runtime_adapters/mcp_stdio/
+  map_/describe), `lib/cipkg/error_system.py`, `lib/cipkg/gatekeeper.py`, `lib/cipkg/intelligent_executor.py`,
+  `lib/cipkg/command_registry.py`, `lib/cipkg/__init__.py` (F-09 targeted scrub).
 
-## Cold handoff — resume Phase 0 undefined names & broken imports (next unit)
+## Cold handoff — resume Phase 1 dead code / dispatch coverage (next unit)
 
 1. **Restore:** Read RUNBOOK (§0 then §6) + TRACKER + LEDGER + DEPENDENCIES §2 + this file.
-   Phases S + 3 + 4 are regression-locked green (**61 tests**).
-2. **Phase 0 scope (TRACKER ranks 9–17):** most retired mechanically by S2/S3 gates. Apply the
-   remaining one-line fixes (F-06, F-20, F-31, ...) after re-running
-   `conformance_checks('lib/cipkg','cipkg')` and scrubbing the S3 53-finding list to 0. **ALSO add the
-   `cli.py __main__` guard** — `python -m cipkg.cli <cmd>` must not silently exit 0 doing nothing
-   (AGENTS.md documents the `-m` form).
-3. **After Phase 0:** Phase 1 (F-16 21 dispatch gaps, F-15 arity) → Phase 2 (config; fix
-   `config.default.toml` invalid TOML and flip the S4 invariant) → Phase 5 → manual M1–M4, updating
+   Phases S + 3 + 4 + 0 are regression-locked green (**61 tests**).
+2. **Phase 1 scope (TRACKER ranks 18–31):** 21 CODE-UNHANDLED-COMMAND (F-16: gate, coverage, dead,
+   circular, deps, migrations, env, logs, metrics, features, api, blame, predict, etc.), 2
+   CODE-ARITY-MISMATCH (F-15: `handle_analyze_command`, `handle_rebuild_command` take only `root`),
+   1 CODE-MISROUTED-COMMAND (F-17: `verify-index` → `handle_verify_index_command`). Add dispatch entries
+   + fix handler signatures in `cli.py`. The 5 legacy-frontend deletion-target MISSING-SYMBOL findings
+   (terminal_dashboard/web_server/watcher) are **NOT to be fixed** — a new frontend replaces them; mark
+   them closed-by-design in TRACKER when the deletion lands.
+3. **After Phase 1:** Phase 2 (config; fix `config.default.toml` invalid TOML + flip the S4 invariant,
+   fix embed autostart hang so `cip selftest` completes) → Phase 5 → manual M1–M4, updating
    TRACKER/LEDGER/CHECKPOINT after each.
 4. **Environment:** Windows, pwsh, py 3.14.4. `python -m pytest tests/detectors/ -o addopts="" -q`
    (current = **61 passing**). Measurement only with `do_embed=False`; replay full rebuild with
    `PYTHONPATH=$PWD/lib python -c "from cipkg import indexer; indexer.sync('.', full=True, do_embed=False)"`.
+5. **Guardrail reminder:** NEVER edit `09-bugs-and-issues.md` (evidence snapshot, statuses stay "open"
+   there by design — status lives in TRACKER/LEDGER only).
 
 ## Guardrails
 - Do NOT edit `09-bugs-and-issues.md`.

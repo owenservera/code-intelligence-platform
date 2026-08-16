@@ -8,8 +8,9 @@ F-22  INDEX-IMPORT-RESOLUTION — `resolve_import` must convert Python dotted
       so ~99.8% of in-repo relative imports failed to resolve (0/5276 effective).
       Locks: multi-segment (`stack.common` -> `stack/common`), parent hops
       (`..base` from `stack/` -> `cipkg/base.py`), and `cipkg.*` abs specs.
-      Repo flip: in-repo rate >= 0.99 after fix (one genuine broken ref remains)
-      and the *only* unresolved spec is the known-broken `cli.py .ingest`.
+      Repo flip: in-repo rate >= 0.99 after fix (pre-fix 0.2%). Phase 0 fixed
+      the final broken ref (`cli.py .ingest` -> `runtime_adapters`), so the repo
+      now resolves 100% of in-repo specs (missed == empty set).
 
 F-42  INDEX-BACKUP-POLLUTION — `iter_files` must never index backup/duplicate
       trees even when `index.exclude` is empty. Pre-fix 575/753 (76.4%) of the
@@ -126,7 +127,9 @@ def test_f22_repo_sole_unresolved_is_known_broken_ref():
         for spec in parse.extract_imports(src, indexer.lang_for(rel)):
             if _in_repo_spec(spec) and not indexer.resolve_import(rel, spec, paths):
                 missed.add((rel, spec))
-    assert missed == {("lib/cipkg/cli.py", ".ingest")}
+    # Phase 0 flip: the last known-broken ref (cli.py .ingest -> runtime_adapters)
+    # is fixed, so the repo resolves 100% of in-repo specs.
+    assert missed == set()
 
 
 # ---------------------------------------------------------------------------

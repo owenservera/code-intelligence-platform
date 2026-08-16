@@ -8,7 +8,6 @@ categorization, and UI integration capabilities.
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Callable
 from enum import Enum
-import inspect
 
 
 class CommandCategory(Enum):

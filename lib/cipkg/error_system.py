@@ -6,7 +6,7 @@ classification, logging, and recovery strategies.
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
 import os
@@ -94,7 +94,6 @@ class ErrorDetector:
     
     def detect_error(self, exception: Exception, context: ErrorContext) -> CIPError:
         """Detect and classify an error."""
-        error_type = type(exception).__name__
         
         # Classify error
         category = self._classify_error(exception, context)
@@ -483,7 +482,7 @@ class RecoveryEngine:
                     'state': 'operation_completed',
                     'message': f'Operation succeeded on attempt {attempt + 1}'
                 }
-            except Exception as e:
+            except Exception:
                 if attempt == max_retries - 1:
                     return {'success': False, 'message': f'All {max_retries} retry attempts failed'}
         

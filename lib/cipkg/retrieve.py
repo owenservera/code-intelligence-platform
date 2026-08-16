@@ -1,5 +1,6 @@
 """Hybrid retrieval v1.0: FTS ⊕ vectors → RRF → rerank; graph traversal;
 budgeted context packs enriched with summaries and runtime signals."""
+import json
 import re, subprocess
 from .base import repo_root, load_config, est_tokens
 from .store import connect, get_meta
@@ -102,7 +103,6 @@ def _external_search(root, cfg, query, k):
             return None
         
         # Parse external tool output (assumes JSON format)
-        import json
         external_results = json.loads(result.stdout)
         
         # Convert external results to CIP format

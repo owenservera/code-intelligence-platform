@@ -33,7 +33,7 @@ Rule: exceeding a budget forces consolidation (merge family rules) before more w
 
 | KPI | Detector / phase | BROKEN value (baseline) | Target after fix | After | Status |
 |---|---|---|---|---|---|
-| in-repo import resolution % | INDEX-IMPORT-RESOLUTION (Ph3) | ~0% (0/234; 43.7% pre-external-cleanup) | 100% of in-repo | **99.79% (486/487)** — sole miss is the genuinely-broken `cli.py .ingest` (dead ref, Ph0 fix targeted) | ☑ |
+| in-repo import resolution % | INDEX-IMPORT-RESOLUTION (Ph3) | ~0% (0/234; 43.7% pre-external-cleanup) | 100% of in-repo | **100% (487/487)** — final broken ref `cli.py .ingest` → `runtime_adapters` fixed in Ph0 (Phase 0) | ☑ |
 | total import resolution % | INDEX-IMPORT-RESOLUTION (Ph3) | ~0.2% (see F-42 correction) | report-only (external dominates) | report-only | ☑ |
 | `tested_by` noise count (dst not symbol id) | INDEX-TESTED-BY-NOISE (Ph3) | 4,462 (pre-re-sync); noise after re-sync | ≤10 | **159 total, 0 noise** (all src = real symbol id, non-backup) | ☑ |
 | backup/duplicate % of indexed files | INDEX-BACKUP-POLLUTION (Ph3) | 76% (575/753) | 0% | **0.0%** — files 753→156 (575 backup copies + stale rows pruned) | ☑ |
@@ -44,9 +44,9 @@ Rule: exceeding a budget forces consolidation (merge family rules) before more w
 | empty-repo health ring | CORE-30 (Ph4) | renders literal 50 | renders "run sync" state | **derived ring (60 at 0 findings; lower with a critical) — never 50, still finding-sensitive** | ☑ |
 | `cip X` "unknown command" count | S3 / Ph1 | 21 | 0 | | |
 | clipboard-broken registry cards (never-fire errors) | S3 (F-15/F-17/CORE-5) | 16 | 0 | | |
-| conformance findings on lib/cipkg (S3 engine, all CODE-* rules) | S3 | 53 (21 UNDISPATCHED, 1 MISROUTED, 2 ARITY, 1 MISSING-MODULE, 28 MISSING-SYMBOL) | 0 (as fixes land Ph0/1/3) | | |
+| conformance findings on lib/cipkg (S3 engine, all CODE-* rules) | S3 | 53 (21 UNDISPATCHED, 1 MISROUTED, 2 ARITY, 1 MISSING-MODULE, 28 MISSING-SYMBOL) | 0 (as fixes land Ph0/1/3) | **29 after Ph0** (21 UNHANDLED + 1 MISROUTED + 2 ARITY all Ph1 dispatch; 5 MISSING-SYMBOL = legacy-frontend deletion targets F-21/F-32 + web_server ImpactAnalyzer/GapFiller + terminal_dashboard selftest — new frontend replaces them) | |
 | broad silent-swallow handlers in lib/cipkg | S1 swallow-scanner (AST) | 83 (pre-fix, incl. F-24/F-41, F-11, CORE-52 evidence) | evidence sites fixed; rest guarded by doctor --static (S5), decrement as Ph4/5 land | 79 | |
-| undefined-name / unused-import findings | S2 / Ph0 | 103 findings on lib/cipkg (pyflakes 3.4.0, 5 undefined-name incl. BUG-005 + retrieval_bridge F821×4) | 0 (gate); cleanup lands Phase 0 rows 9/11 | | |
+| undefined-name / unused-import findings | S2 / Ph0 | 103 findings on lib/cipkg (pyflakes 3.4.0, 5 undefined-name incl. BUG-005 + retrieval_bridge F821×4) | 0 (gate); cleanup lands Phase 0 rows 9/11 | **Ph0 targeted scrub landed** (F-06/F-13/F-20/F-31/F-34/F-35/BUG-005 + cli.py import + cli.py `map_`/`describe`); full-lib pyflakes residual rows pending Ph0/1 sweep | |
 | pytest baseline (backend) | F-10/F-42B watch | 10 failed / 90 passed / 1 skipped / 30 errors | never regresses | | |
 | sys.path / repo-settings profile loads | CONFIG-PROFILE-SILENT-FAIL (Ph2) | F-11: profile={} always | profile loads (external_search active) | | |
 | daemon port truth (config vs code) | CONFIG-PORT-MISMATCH (Ph2) | 8765 vs 8787 | single source | | |
@@ -65,8 +65,8 @@ Record after-values as fixes land. "report-only" rows track transparency, not a 
 | CODE-UNDEFINED-NAME (F0) | ☑ | FP=0 (clean_ref sample.py) | | doc: DESIGN §2 S2 |
 | CODE-MISSING-SYMBOL (F0) | ☑ | FP=0 (clean_ref sample.py) | | S2 family test gates both |
 | CODE-DEAD-MODULE (F1) | ☐ | FP=0 (exemplars) | | |
-| CODE-UNHANDLED-COMMAND (F1) + CODE-MISROUTED-COMMAND + CODE-ARITY-MISMATCH + CODE-MISSING-SYMBOL + CODE-MISSING-MODULE (S3 conformance AST; covers F-13/15/16/17/20/21/31/32/34/35) | ☑ (53 total on lib/cipkg: 21 UNHANDLED, 1 MISROUTED, 2 ARITY, 1 MISSING-MODULE, 28 MISSING-SYMBOL) | FP=0 (synthetic clean cli pkg + clean_ref) | | S3 test gates recall + precision |
-| INDEX-IMPORT-RESOLUTION (F3) | ☑ (fires on pre-fix: resolve_import returned None for multi-seg `.stack.common`/`.memory.*` and emitted `lib/cipkg/.base.py` artifacts; unit cases now assert correct targets) | FP=0 (only `cli.py .ingest` unresolved — genuinely-broken module, not a resolver artifact; synthetic clean pkg resolves 100%) | report-only total metric | ☑ locked in `phase3_index_test.py` |
+| CODE-UNHANDLED-COMMAND (F1) + CODE-MISROUTED-COMMAND + CODE-ARITY-MISMATCH + CODE-MISSING-SYMBOL + CODE-MISSING-MODULE (S3 conformance AST; covers F-13/15/16/17/20/21/31/32/34/35) | ☑ (53 total on lib/cipkg: 21 UNHANDLED, 1 MISROUTED, 2 ARITY, 1 MISSING-MODULE, 28 MISSING-SYMBOL) | FP=0 (synthetic clean cli pkg + clean_ref) | | S3 test gates recall + precision — Ph0 fixes (F-13/20/31/34/35/CORE-5) flipped clean; 29 residual = 24 Ph1 dispatch + 5 legacy-frontend deletion targets |
+| INDEX-IMPORT-RESOLUTION (F3) | ☑ (fires on pre-fix: resolve_import returned None for multi-seg `.stack.common`/`.memory.*` and emitted `lib/cipkg/.base.py` artifacts; unit cases now assert correct targets) | FP=0 (repo flip: Ph0 fixed `cli.py .ingest` → now **100%** in-repo resolution, missed==∅; synthetic clean pkg resolves 100%) | report-only total metric | ☑ locked in `phase3_index_test.py` |
 | INDEX-TESTED-BY-NOISE (F3) | ☑ (fires on broken edges: backup-src + missing-src counted) | FP=0 (clean synthetic DB: real tested_by silent) | | ☑ locked |
 | INDEX-BACKUP-POLLUTION (F3) | ☑ (detector counts backup-segment files when present; synthetic backup tree the OLD scanner indexed now stays clean — flip) | FP=0 (segment-aware: test filenames *containing* `backup_` are NOT flagged; sync_global source files remain indexed) | | ☑ locked at both surfaces (base.iter_files + gatekeeper `_scan`/`_decide`) |
 | AUDIT-FINDING-AUTO-CLOSED (F4) | ☑ (8/8 suite: ESLINT row survives auto-close when its rule didn't run; stale row of a RAN rule still closes) | FP=0 (clean audit root: no findings seeded → sweep no-op; clean_ref untouched) | | ☑ locked in `phase4_audit_test.py` |

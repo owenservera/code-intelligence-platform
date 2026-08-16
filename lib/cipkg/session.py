@@ -2,7 +2,7 @@
 Provides budget-capped repo context packets and session-end learning loops."""
 import os, json, time
 from .base import repo_root, load_config
-from . import summarize, gitindex, retrieve
+from . import summarize, gitindex
 from .stack import audit as stack_audit
 from .verify import verify
 from . import learning
@@ -36,16 +36,17 @@ def session_start(root=None):
     try:
         arch_map = summarize.map_(root)
         session_data["architecture"] = {
-            "subsystems": len(arch_map.get("subsystems", [])),
-            "total_files": arch_map.get("total_files", 0),
-            "overview": arch_map.get("overview", "")
+            "subsystems": len(arch_map.get("directories", [])),
+            "total_files": arch_map.get("totals", {}).get("files", 0),
+            "overview": arch_map.get("hotspots", [])
         }
     except Exception:
         session_data["architecture"] = {"error": "architecture map unavailable"}
     
     # Broken tests
     try:
-        broken = retrieve.runtime_adapters.broken(root)
+        from .runtime_adapters import broken as _broken
+        broken = _broken(root)
         session_data["broken_tests"] = broken.get("files", [])[:5]
     except Exception:
         session_data["broken_tests"] = []
@@ -179,7 +180,8 @@ def _collect_audit_delta(root):
 def _collect_test_delta(root):
     """Collect test results delta during session."""
     try:
-        broken = retrieve.runtime_adapters.broken(root)
+        from .runtime_adapters import broken as _broken
+        broken = _broken(root)
         return {
             "failing_tests": len(broken.get("files", [])),
             "test_errors": broken.get("errors", 0)

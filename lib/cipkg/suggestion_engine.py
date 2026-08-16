@@ -416,7 +416,7 @@ class PatternAnalyzer(SuggestionAnalyzer):
                 if common_workflow:
                     suggestions.append(Suggestion(
                         action=f'cip workflow {common_workflow}',
-                        reason=f'Common workflow during this time',
+                        reason='Common workflow during this time',
                         impact='Streamline your regular workflow',
                         priority=Priority.LOW,
                         confidence=0.70,
@@ -662,6 +662,6 @@ class SuggestionEngine:
         
         # Rank and filter suggestions
         ranked = self.ranking_engine.rank(suggestions)
-        filtered = self.filter_engine.rank(ranked)
+        filtered = self.filter_engine.filter(ranked)
         
         return filtered[:max_suggestions]

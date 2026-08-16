@@ -17,6 +17,10 @@ def _out(obj):
 def _desc(msg):
     print("  -> %s" % msg, flush=True)
 
+def _server_describe(root, entity=None):
+    from .server import describe
+    return describe(root, entity)
+
 def _install_hooks(root):
     git = os.path.join(root, ".git")
     if not os.path.isdir(git):
@@ -214,7 +218,7 @@ def handle_git_index_command(root, args):
     _out(gitindex.git_index(root, depth=getattr(args, 'depth', None)))
 
 def handle_ingest_command(root, args):
-    from .ingest import ingest
+    from .runtime_adapters import ingest
     _out(ingest(root, getattr(args, 'kind', ''), getattr(args, 'file', '-')))
 
 def handle_export_command(root, args):
@@ -252,8 +256,8 @@ def handle_dashboard_web_command(root, args):
     start_web_server(root, port, host)
 
 def handle_mcp_command(root, args):
-    from .server import mcp_main
-    mcp_main()
+    from .server import mcp_stdio
+    mcp_stdio(root)
 
 def handle_tools_command(root, args):
     from .server import TOOLS
@@ -264,8 +268,8 @@ def handle_tools_command(root, args):
             print(f"{t['name']}: {t['description']}")
 
 def handle_selftest_command(root, args):
-    from .selftest import selftest
-    _out(selftest(root))
+    from .selftest import run_selftest
+    _out({"exit_code": run_selftest()})
 
 def handle_session_command(root, args):
     """Handle session management commands."""
@@ -307,6 +311,69 @@ def handle_learning_command(root, args):
     else:
         result = {"error": f"Unknown learning command: {args.learning_cmd}"}
     _out(result)
+
+# ── gapfill / audit pass-through handlers ────────────────────────────────────
+# Wire registry cards + dispatch to the REAL lib callables (CORE-5 / F-35).
+# Each real function lives in gapfill / predict / stack.audit; these handlers
+# only translate the (root, args) shape and print via _out.
+
+def handle_coverage_command(root, args):
+    from . import gapfill
+    _out(gapfill.coverage(root))
+
+def handle_dead_command(root, args):
+    from . import gapfill
+    _out(gapfill.dead(root, limit=getattr(args, 'limit', 50)))
+
+def handle_circular_command(root, args):
+    from . import gapfill
+    _out(gapfill.circular(root))
+
+def handle_blame_command(root, args):
+    from . import gapfill
+    _out(gapfill.blame(root, path=getattr(args, 'path', None), line=getattr(args, 'line', None)))
+
+def handle_migrations_command(root, args):
+    from . import gapfill
+    _out(gapfill.migrations(root))
+
+def handle_env_command(root, args):
+    from . import gapfill
+    _out(gapfill.env(root, limit=getattr(args, 'limit', 60)))
+
+def handle_logs_command(root, args):
+    from . import gapfill
+    _out(gapfill.logs(root))
+
+def handle_metrics_command(root, args):
+    from . import gapfill
+    _out(gapfill.metrics(root))
+
+def handle_features_command(root, args):
+    from . import gapfill
+    _out(gapfill.features(root))
+
+def handle_deps_command(root, args):
+    from . import gapfill
+    _out(gapfill.deps(root))
+
+def handle_api_command(root, args):
+    from . import gapfill
+    _out(gapfill.api(root))
+
+def handle_refactors_command(root, args):
+    from .stack import audit as stack_audit
+    _out(stack_audit.quick_wins(root, limit=getattr(args, 'limit', 10)))
+
+def handle_gate_command(root, args):
+    from .stack import audit as stack_audit
+    _out(stack_audit.gate(root))
+
+def handle_predict_command(root, args):
+    from . import predict
+    _out(predict.predict_next_context(
+        root, getattr(args, 'operation', ''), getattr(args, 'symbol', None),
+        getattr(args, 'query', None)))
 
 # ── commands ─────────────────────────────────────────────────────────────────
 
@@ -698,8 +765,8 @@ def dispatch_command(root, args):
         "graph": handle_graph_command,
         "context": handle_context_command,
         "summary": handle_summary_command,
-        "map": lambda r, a: _out(summarize.map(r)),
-        "describe": lambda r, a: _out(summarize.describe(r, getattr(a, 'entity', None))),
+        "map": lambda r, a: _out(summarize.map_(r)),
+        "describe": lambda r, a: _out(_server_describe(r, getattr(a, 'entity', None))),
         "broken": handle_broken_command,
         "hotspots": handle_hotspots_command,
         "history": handle_history_command,
@@ -749,3 +816,11 @@ def main(argv=None):
     root = os.getcwd() if a.cmd == "init" else repo_root()
 
     return dispatch_command(root, a)
+
+
+# Allow `python -m cipkg.cli <cmd>` to behave like `cip <cmd>` instead of being
+# a silent no-op (module import without a `__main__` guard used to exit 0 doing
+# nothing — AGENTS.md documents the `-m` form).
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
