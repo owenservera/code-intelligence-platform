@@ -63,8 +63,8 @@ Suite: `tests/detectors/phase3_index_test.py` (14 tests) + `s6_index_integrity.p
 
 | Rank | Finding | Folder | Level | Detector proven(b+c) | Precision | Locked | Fix | KPI | Assessment |
 |---|---|---|---|---|---|---|---|---|---|
-| 18 | F-16 | bugs/F-16 | instance | | | | | | retired-by-S3 |
-| 19 | F-15 | bugs/F-15 | instance | | | | | | retired-by-S3 |
+| 18 | F-16 | bugs/F-16 | instance | ☑ | ☑ | ☑ | ☑ | 21→20 wired + `dashboard` TUI pending deletion | fixed Ph1 — 20/21 dispatched; `dashboard` legacy TUI = deletion target |
+| 19 | F-15 | bugs/F-15 | instance | ☑ | ☑ | ☑ | ☑ | analyze/rebuild run | fixed Ph1 — arity aligned to `(root, args)` |
 | 20 | F-25 (line-count/doc corrections) | bugs/F-25 | instance | | | | | | note-only |
 | 21 | BUG-011 / F-04 | bugs/BUG-011 | delete | | | | | | family-sweep |
 | 22 | F-26 | bugs/F-26 | delete | | | | | | family-sweep |
@@ -124,8 +124,8 @@ Suite: `tests/detectors/phase3_index_test.py` (14 tests) + `s6_index_integrity.p
 | 3 | 3 | 3/3 | 3/3 | 3/3 | 3/3 |
 | 4 | 5 | 5/5 | 5/5 | 5/5 | 5/5 |
 | 0 | 9 | 9/9 | 9/9 | 9/9 | 9/9 |
-| 1 | 14 | 0/14 | 0/14 | 0/14 | 0/14 |
+| 1 | 14 | 2/14 | 2/14 | 2/14 | 2/14 |
 | 2 | 6 | 0/6 | 0/6 | 0/6 | 0/6 |
 | 5 | 11 | 0/11 | 0/11 | 0/11 | 0/11 |
 | manual | 4 | — | — | — | — |
-| **Total** | **53 rows** | **22/53** | **22/53** | **22/53** | **18/53** |
+| **Total** | **53 rows** | **24/53** | **24/53** | **24/53** | **20/53** |

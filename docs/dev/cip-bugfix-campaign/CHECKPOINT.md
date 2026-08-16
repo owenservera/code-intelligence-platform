@@ -14,13 +14,17 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
   itself. Portability = CIP dispatches detectors by file language (RUNBOOK §0, `PROFILE.cip.md` §2). We do
   NOT copy campaign docs into other repos.
 - **Phase S complete (systemic foundation, 5/5) + Phase 3 complete (index integrity, 3/3) + Phase 4
-  complete (audit/health honesty, 5/5) + Phase 0 complete (undefined names & broken imports, 9/9).**
-  Phases remaining: 1 → 2 → 5 → manual (DEPENDENCIES.md §2).
-- **Next unit: Phase 1 — dead code / dispatch coverage (ranks 18–31).** 21 CODE-UNHANDLED-COMMAND gaps
-  (F-16), 2 CODE-ARITY-MISMATCH (F-15: `handle_analyze_command`/`handle_rebuild_command`), 1
-  CODE-MISROUTED-COMMAND (F-17: `verify-index`). Legacy-frontend deletion-target findings
-  (`terminal_dashboard.py:985`, `web_server.py:226/241/186`, `watcher.py:104`) clear in the Phase 1 sweep —
-  a brand-new frontend is being designed from scratch after this campaign, so those sites are NOT fixed.
+  complete (audit/health honesty, 5/5) + Phase 0 complete (undefined names & broken imports, 9/9) +
+  Phase 1 dispatch coverage (F-16/F-15/F-17) landed.**
+  Phases remaining: 1 sweep (deletions) → 2 → 5 → manual (DEPENDENCIES.md §2).
+- **Next unit: Phase 1 sweep — legacy-frontend / dead-code deletions (ranks 21–30).** F-16 dispatch
+  (20/21 wired) + F-15 arity + F-17 misroute are FIXED and regression-locked (conformance 29 → 6).
+  Remaining Phase 1 work: the family-sweep deletions per `10-plan §6` (delete `command_adapter.py`,
+  `interactive.py`, `interactive_ui.py`, `help_system.py`, `watcher.py`, `dashboard_state.py`,
+  `stack/selftest.py`, `ast_chunker.py`, `retrieval_bridge.py`, `lancedb_store.py`; extract
+  `briefing()` → `stack/briefing.py` F-38; drop `ast_aware_chunking` BUG-011/024) and the note-only rows
+  (F-25, F-40). The 6 residual conformance findings (`dashboard` legacy TUI + 5 legacy-frontend
+  MISSING-SYMBOL) clear when the new frontend lands — those sites are NOT fixed.
 
 ## Completed this session (Phases S3 + S4 + Phase 4 landing)
 
@@ -281,6 +285,47 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
   locked, 18/53 fixes.** LEDGER §2 after-values (import resolution 100%, conformance 29, undefined-name
   scrub) + §3 precision rows updated. `09-bugs-and-issues.md` left UNTOUCHED (guardrail).
 
+## Completed this session (Phase 1 — dead code / dispatch coverage, F-16/F-15/F-17)
+
+### F-16 — 20/21 CLI subcommands wired into `dispatch_command`
+- **Detector proven (RECALL):** S3 conformance `conformance_checks('lib/cipkg','cipkg')` surfaced all 21
+  CODE-UNHANDLED-COMMAND (F-16) before any fix. Runtime-proven: `cip coverage` → `unknown command` exit 1.
+- **Fix (product-wide, detect-first/fix-last):** added 20 `dispatch_command` handlers entries wired to
+  REAL lib callables. 14 handlers already existed (added for CORE-5 in Phase 0) but were never dispatched;
+  6 new handlers added — `routes`→`stack.nextjs.list_routes`, `models`→`stack.prisma.models_report`,
+  `admission`→`gatekeeper.admission_report`/`explain`, `score`→`gapfill.score`, `embedder`→`cmd_embedder`,
+  `embed-ping`→`cmd_embed_ping`.
+- **`dashboard` left undispatched by design:** it is the legacy TUI (`terminal_dashboard.py`), a deletion
+  target for the brand-new frontend — NOT fixed. Remains the single residual CODE-UNHANDLED-COMMAND.
+- **Runtime-verified post-fix:** `coverage`, `analyze`, `score`, `admission`, `routes`, `models`,
+  `refactors`, `embedder`, `verify-index` all run. `cip gate` still blocks >120s on embed-service
+  autostart (known Phase 2 config item, not a dispatch defect).
+
+### F-15 — `analyze`/`rebuild` arity aligned to `(root, args)`
+- **Detector proven (RECALL):** CODE-ARITY-MISMATCH fired on both handlers; runtime-proven `cip analyze`
+  → `TypeError: handle_analyze_command() takes 1 positional argument but 2 were given`.
+- **Fix:** `handle_analyze_command(root)` → `(root, args)`, `handle_rebuild_command(root)` → `(root, args)`.
+  `cip analyze` now returns `{overall_score: 61.3, ...}`; `cip rebuild` runs `maintain.rebuild`.
+
+### F-17 — `verify-index` routed to the correct handler
+- **Detector proven (RECALL):** CODE-MISROUTED-COMMAND — `handlers['verify-index']` → `handle_verify_command`
+  (verification gate) while `handle_verify_index_command` (runs `maintain.verify(repair=)`) existed dead.
+- **Fix:** dispatch `"verify-index"` → `handle_verify_index_command`. Runtime-verified: returns
+  `{checked: 180, drift: []}` instead of the gate's `broken_tests` report.
+
+### Regression-lock + docs
+- **S3 tests flipped clean-path** for F-16 (20 wired, `dashboard` residual asserted), F-17, F-15.
+- **Full `tests/detectors/`: 61 passed in 66s** (S1×2 + S2×3 + S5×7 + S3×12 + S4×15 + Ph3×14 + Ph4×8).
+  `tests/data/clean_ref/` untouched. pyflakes clean on `cli.py`.
+- **Conformance findings: 29 → 6** after Phase 1 (1 UNHANDLED `dashboard` + 5 legacy-frontend
+  MISSING-SYMBOL). `cip X` "unknown command" 21 → 1 (deletion-target); registry cards 16 → 0.
+- **TRACKER Phase 1: F-16/F-15 rows ☑ (proven+precision+locked+fix); Total 24/53 detectors/precision/
+  locked, 20/53 fixes.** LEDGER §2 after-values + §3 precision row updated; `10-plan` §6 F-16/F-15 marked
+  LANDED. `09-bugs-and-issues.md` left UNTOUCHED (guardrail).
+- **Pre-existing unrelated failures (confirmed via `git stash` — fail on HEAD too):**
+  `tests/test_integration.py` (caller passes `indexer.sync(con, cfg)` → TypeError in `base.data_dir`) and
+  `tests/terminal_dashboard/` legacy-TUI conftest/asyncio errors. Not caused by Phase 1 edits.
+
 ## Docs (all listed values live; `09` intact)
 - `09-bugs-and-issues.md` — untouched source of truth (869 lines).
 - `PROFILE.cip.md` — CIP wiring + per-language instruments (NEW).
@@ -300,21 +345,26 @@ this file + TRACKER + LEDGER are the only truth a fresh agent needs to resume. *
   (BUG-005), `lib/cipkg/cli.py` (F-34/F-35/CORE-5/__main__ guard/ingest→runtime_adapters/mcp_stdio/
   map_/describe), `lib/cipkg/error_system.py`, `lib/cipkg/gatekeeper.py`, `lib/cipkg/intelligent_executor.py`,
   `lib/cipkg/command_registry.py`, `lib/cipkg/__init__.py` (F-09 targeted scrub).
+- Phase 1 dispatch fixes: `lib/cipkg/cli.py` — 20 F-16 dispatch entries + 6 new handlers (routes/models/
+  admission/score/embedder/embed-ping), F-15 arity (`analyze`/`rebuild`), F-17 `verify-index` route;
+  `tests/detectors/s3_conformance_test.py` — F-16/F-17/F-15 RECALL tests flipped clean-path.
 
-## Cold handoff — resume Phase 1 dead code / dispatch coverage (next unit)
+## Cold handoff — resume Phase 1 sweep (dead-code deletions, next unit)
 
 1. **Restore:** Read RUNBOOK (§0 then §6) + TRACKER + LEDGER + DEPENDENCIES §2 + this file.
-   Phases S + 3 + 4 + 0 are regression-locked green (**61 tests**).
-2. **Phase 1 scope (TRACKER ranks 18–31):** 21 CODE-UNHANDLED-COMMAND (F-16: gate, coverage, dead,
-   circular, deps, migrations, env, logs, metrics, features, api, blame, predict, etc.), 2
-   CODE-ARITY-MISMATCH (F-15: `handle_analyze_command`, `handle_rebuild_command` take only `root`),
-   1 CODE-MISROUTED-COMMAND (F-17: `verify-index` → `handle_verify_index_command`). Add dispatch entries
-   + fix handler signatures in `cli.py`. The 5 legacy-frontend deletion-target MISSING-SYMBOL findings
-   (terminal_dashboard/web_server/watcher) are **NOT to be fixed** — a new frontend replaces them; mark
-   them closed-by-design in TRACKER when the deletion lands.
-3. **After Phase 1:** Phase 2 (config; fix `config.default.toml` invalid TOML + flip the S4 invariant,
-   fix embed autostart hang so `cip selftest` completes) → Phase 5 → manual M1–M4, updating
-   TRACKER/LEDGER/CHECKPOINT after each.
+   Phases S + 3 + 4 + 0 + **Phase 1 dispatch (F-16 20/21, F-15, F-17)** are regression-locked green
+   (**61 tests**).
+2. **Phase 1 remaining scope (TRACKER ranks 21–30, "delete" level — no per-instance docs):** per
+   `10-plan §6`, delete `command_adapter.py`, `interactive.py`, `interactive_ui.py`, `help_system.py`,
+   `watcher.py`, `dashboard_state.py`, `stack/selftest.py`, `ast_chunker.py`, `retrieval_bridge.py`,
+   `lancedb_store.py`; **extract `briefing()` → `stack/briefing.py`** (F-38/CORE-51) and reuse the WS
+   topic protocol as a model (F-39/CORE-57) before deletion; `repo_map.py`/`scip_indexer.py` deleted or
+   wired (F-25/F-33); BUG-011/024 drop `ast_aware_chunking` dead config path; F-40 verified-clean note-only.
+   The 6 residual conformance findings (`dashboard` legacy TUI + 5 legacy-frontend MISSING-SYMBOL) are
+   **NOT to be fixed** — they clear when the new from-scratch frontend lands; mark closed-by-design then.
+3. **After Phase 1 sweep:** Phase 2 (config; fix `config.default.toml` invalid TOML + flip the S4
+   invariant, fix embed autostart hang so `cip selftest` and `cip gate` complete) → Phase 5 → manual
+   M1–M4, updating TRACKER/LEDGER/CHECKPOINT after each.
 4. **Environment:** Windows, pwsh, py 3.14.4. `python -m pytest tests/detectors/ -o addopts="" -q`
    (current = **61 passing**). Measurement only with `do_embed=False`; replay full rebuild with
    `PYTHONPATH=$PWD/lib python -c "from cipkg import indexer; indexer.sync('.', full=True, do_embed=False)"`.

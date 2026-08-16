@@ -72,11 +72,11 @@ def _check_daemon(root):
     from .embed import find_daemon_port
     return find_daemon_port(root)
 
-def handle_analyze_command(root):
+def handle_analyze_command(root, args):
     from . import analysis
     _out(analysis.repo_health_report(root))
 
-def handle_rebuild_command(root):
+def handle_rebuild_command(root, args):
     from .maintain import rebuild
     _out(rebuild(root, progress=_progress))
 
@@ -374,6 +374,29 @@ def handle_predict_command(root, args):
     _out(predict.predict_next_context(
         root, getattr(args, 'operation', ''), getattr(args, 'symbol', None),
         getattr(args, 'query', None)))
+
+def handle_routes_command(root, args):
+    from .stack import nextjs
+    _out(nextjs.list_routes(root))
+
+def handle_models_command(root, args):
+    from .stack import prisma
+    _out(prisma.models_report(root))
+
+def handle_admission_command(root, args):
+    from . import gatekeeper
+    rel = getattr(args, 'path', None)
+    _out(gatekeeper.explain(root, rel) if rel else gatekeeper.admission_report(root))
+
+def handle_score_command(root, args):
+    from . import gapfill
+    _out(gapfill.score(root))
+
+def handle_embedder_command(root, args):
+    cmd_embedder(root)
+
+def handle_embed_ping_command(root, args):
+    cmd_embed_ping(root, getattr(args, 'count', 5))
 
 # ── commands ─────────────────────────────────────────────────────────────────
 
@@ -789,10 +812,31 @@ def dispatch_command(root, args):
         "suggest-context": handle_suggest_context_command,
         "analyze": handle_analyze_command,
         "rebuild": handle_rebuild_command,
-        "verify-index": handle_verify_command,
+        "verify-index": handle_verify_index_command,
         "vacuum": handle_vacuum_command,
         "embed": handle_embed_command,
         "dashboard-web": handle_dashboard_web_command,
+        # v2 gap-fillers (F-16: registered but were never dispatched)
+        "coverage": handle_coverage_command,
+        "dead": handle_dead_command,
+        "circular": handle_circular_command,
+        "blame": handle_blame_command,
+        "score": handle_score_command,
+        "migrations": handle_migrations_command,
+        "env": handle_env_command,
+        "logs": handle_logs_command,
+        "metrics": handle_metrics_command,
+        "features": handle_features_command,
+        "deps": handle_deps_command,
+        "api": handle_api_command,
+        "predict": handle_predict_command,
+        "refactors": handle_refactors_command,
+        "gate": handle_gate_command,
+        "routes": handle_routes_command,
+        "models": handle_models_command,
+        "admission": handle_admission_command,
+        "embedder": handle_embedder_command,
+        "embed-ping": handle_embed_ping_command,
     }
     
     handler = handlers.get(args.cmd)

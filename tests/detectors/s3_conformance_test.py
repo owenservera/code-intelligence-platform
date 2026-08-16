@@ -50,27 +50,31 @@ def _evidence(rule: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def test_s3_recall_f16_unhandled_commands():
-    """F-16: the 21 registered-but-undispatched subcommands are surfaced."""
+    """F-16 (flip): the 20 product subcommands are wired in dispatch_command.
+
+    Only `dashboard` (the legacy TUI) remains undispatched by design — it is a
+    deletion target replaced by the new from-scratch frontend (Phase 1 sweep).
+    """
     ev = _evidence("CODE-UNHANDLED-COMMAND")
-    assert len(ev) >= 21
-    for cmd in ("gate", "coverage", "deps", "embedder", "dashboard", "admission",
-                "refactors", "routes", "models", "embed-ping", "dead", "circular",
-                "blame", "score", "migrations", "env", "logs", "metrics",
-                "features", "api", "predict"):
-        assert any(cmd in e for e in ev), cmd
+    for cmd in ("gate", "coverage", "deps", "admission", "refactors", "routes",
+                "models", "embed-ping", "dead", "circular", "blame", "score",
+                "migrations", "env", "logs", "metrics", "features", "api",
+                "predict", "embedder"):
+        assert not any(cmd in e for e in ev), cmd
+    assert any("dashboard" in e for e in ev)  # legacy-TUI deletion target, pending
 
 
 def test_s3_recall_f17_misrouted_command():
-    """F-17: 'verify-index' is routed to the wrong handler."""
+    """F-17 (flip): 'verify-index' now routes to handle_verify_index_command."""
     ev = _evidence("CODE-MISROUTED-COMMAND")
-    assert any("verify-index" in e and "handle_verify_command" in e and "handle_verify_index_command" in e for e in ev)
+    assert not any("verify-index" in e and "handle_verify_command" in e for e in ev)
 
 
 def test_s3_recall_f15_arity_mismatch():
-    """F-15: analyze/rebuild handlers cannot accept dispatch's (root, args)."""
+    """F-15 (flip): analyze/rebuild handlers accept dispatch's (root, args)."""
     ev = _evidence("CODE-ARITY-MISMATCH")
-    assert any("handle_analyze_command" in e for e in ev)
-    assert any("handle_rebuild_command" in e for e in ev)
+    assert not any("handle_analyze_command" in e for e in ev)
+    assert not any("handle_rebuild_command" in e for e in ev)
 
 
 def test_s3_clean_path_f34_selftest_symbol():

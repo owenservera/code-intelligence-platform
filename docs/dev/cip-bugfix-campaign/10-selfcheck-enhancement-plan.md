@@ -187,8 +187,12 @@ family rule shows 0 FPs on clean-ref.
 ## 6. Phase 1 — Dead code & command-dispatch coverage  (rank 18–31; class-workflow)
 
 **FIX (defects — apply LAST):**
-- F-16 (21 missing dispatch entries) + F-15 (`analyze`/`rebuild` arity) — wired by S3 conformance first,
-  then `cli.py` handler align to `(root, args)`; registry cards point at real lib callables.
+- ✅ **F-16 (21 missing dispatch entries) + F-15 (`analyze`/`rebuild` arity) — LANDED 2026-08-16:** wired by S3
+  conformance first, then `cli.py` handlers aligned to `(root, args)`; 20/21 subcommands dispatched to real
+  lib callables (gapfill/stack.audit/stack.nextjs/stack.prisma/gatekeeper/predict + `cmd_embedder`/`cmd_embed_ping`).
+  `dashboard` (legacy TUI) left undispatched by design — deletion target for the new frontend. `verify-index`
+  now routes to `handle_verify_index_command` (F-17). Runtime-proven: `coverage`/`analyze`/`score`/`admission`/
+  `routes`/`models`/`refactors`/`embedder` all run; `cip gate` still blocks on embed-autostart (Phase 2 config).
 - Legacy removal per `09 §7` (unchanged directive): delete `command_adapter.py`, `interactive.py`,
   `interactive_ui.py`, `help_system.py`, `watcher.py`, `dashboard_state.py`, `stack/selftest.py`,
   `ast_chunker.py`, `retrieval_bridge.py`, `lancedb_store.py`; **extract `briefing()` → `stack/briefing.py`**
@@ -199,9 +203,11 @@ family rule shows 0 FPs on clean-ref.
 
 **ENHANCE (detectors — prove FIRST, then bulk-sweep):** `CODE-DEAD-MODULE` (zero importers + no
 CLI/registry entry), `CODE-UNHANDLED-COMMAND`, `CODE-ARITY-MISMATCH`. **Prove each on 2–3 exemplars, then
-sweep the rest — no per-instance docs for deletions.**
+sweep the rest — no per-instance docs for deletions.** (`CODE-UNHANDLED-COMMAND` + `CODE-ARITY-MISMATCH`
+already proven+locked via S3 conformance — F-16/F-15 flipped clean Ph1.)
 **Acceptance:** post-cleanup `CODE-DEAD-MODULE` only fires on genuinely-orphaned new code; the 21 commands
-no longer print "unknown command"; `briefing()` lives in a leaf module.
+no longer print "unknown command" (20/21 wired Ph1; `dashboard` legacy-TUI pending new frontend);
+`briefing()` lives in a leaf module.
 
 ---
 
