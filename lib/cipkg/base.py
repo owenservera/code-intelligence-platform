@@ -32,7 +32,16 @@ CIP_DIRNAME = ".cip"
 
 DEFAULT_EXCLUDES = {
     ".git", ".cip",  # Only truly universal excludes
+    # Generated / dependency / backup trees (F-42): these poison the index with
+    # duplicate symbols and are never first-class source. Kept in the hard set so
+    # they stay excluded even when repo config excludes are empty/unloaded.
+    "__pycache__", ".pytest_cache", "node_modules", ".venv", "venv",
+    "backups", "htmlcov", "dist", "build", ".tox",
 }
+
+# Directory-name prefixes that mark a tree as an automated backup/emergency
+# snapshot (e.g. sync_global/backups/backup_20260815_...). Excluded always.
+BACKUP_DIR_PREFIXES = ("backup_", "emergency_")
 
 # Load defaults from TOML files, falling back to hardcoded defaults
 _toml_defaults = _load_default_toml()
@@ -141,9 +150,11 @@ def load_config(root):
                 cfg.setdefault(section, {}).update(kv)
             elif isinstance(kv, list):
                 cfg.setdefault(section, {}).setdefault(section, []).extend(kv)
-    except Exception:
+    except Exception as e:
+        # F-11/CORE-41: repo-settings profile load failed — never swallow silently.
+        # Full resolution fix lands in Phase 2 (F-11); until then, surface for diagnostics.
+        log_swallowed("base.load_config.repo_settings", e)
         # Fallback to basic config if detection fails
-        pass
     
     # Load local repo config for overrides
     path = os.path.join(cip_dir(root), "config.toml")
@@ -188,6 +199,8 @@ def iter_files(root, cfg):
                 for e in it:
                     if e.is_dir(follow_symlinks=False):
                         if e.name in DEFAULT_EXCLUDES:
+                            continue
+                        if e.name.startswith(BACKUP_DIR_PREFIXES):
                             continue
                         rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
                         if _excluded(rel_dir, e.name, extra):

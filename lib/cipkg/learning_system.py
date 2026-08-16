@@ -679,6 +679,34 @@ class LearningSystem:
         self.collector = PatternCollector(self.storage)
         self.analyzer = PatternAnalyzer(self.storage)
         self.personalization = PersonalizationEngine(self.storage)
+        
+        # Memory integration
+        self._memory = None
+        self._episodic = None
+    
+    @property
+    def memory(self):
+        """Lazy-load memory subsystem."""
+        if self._memory is None:
+            try:
+                from .memory.temporal_graph import AgentMemory
+                memory_dir = os.path.join(self.storage.storage_dir, 'memory.db')
+                self._memory = AgentMemory(memory_dir)
+            except Exception:
+                self._memory = None
+        return self._memory
+    
+    @property
+    def episodic(self):
+        """Lazy-load episodic memory."""
+        if self._episodic is None:
+            try:
+                from .memory.episodic import AgentExperienceLogger
+                episodic_dir = os.path.join(self.storage.storage_dir, 'episodes.db')
+                self._episodic = AgentExperienceLogger(episodic_dir)
+            except Exception:
+                self._episodic = None
+        return self._episodic
     
     def record_action(self, action_data: Dict[str, Any]):
         """Record a user action."""
@@ -695,6 +723,33 @@ class LearningSystem:
                 execution_time=action_data.get('execution_time', 0.0),
                 error=action_data.get('error')
             )
+            
+            # Log to episodic memory
+            if self.episodic:
+                try:
+                    self.episodic.log_interaction(
+                        query=action_data.get('command', ''),
+                        result=action_data.get('context', {}),
+                        success=action_data.get('success', True)
+                    )
+                except Exception:
+                    pass
+            
+            # Store in semantic memory
+            if self.memory:
+                try:
+                    self.memory.remember(
+                        key=f"command:{action_data.get('command', '')}",
+                        value={
+                            'command': action_data.get('command'),
+                            'success': action_data.get('success', True),
+                            'timestamp': datetime.now().isoformat()
+                        },
+                        source="learning_system"
+                    )
+                except Exception:
+                    pass
+        
         elif action_type == 'suggestion_response':
             self.collector.record_suggestion_response(
                 user_id=action_data['user_id'],
@@ -704,6 +759,16 @@ class LearningSystem:
                 rating=action_data.get('rating'),
                 feedback=action_data.get('feedback')
             )
+            
+            # Store preference in memory
+            if self.memory:
+                try:
+                    self.memory.learn_preference(
+                        preference=f"suggestion:{action_data.get('suggestion_id', '')}",
+                        value=action_data.get('accepted', False)
+                    )
+                except Exception:
+                    pass
     
     def get_personalized_suggestions(self, user_id: str, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Get personalized suggestions for user."""
@@ -716,6 +781,52 @@ class LearningSystem:
     def analyze_patterns(self, user_id: str) -> Dict[str, Any]:
         """Analyze patterns for a user."""
         return self.analyzer.analyze_user_patterns(user_id)
+    
+    def recall_relevant(self, query: str) -> List[Dict[str, Any]]:
+        """Recall relevant past experiences for a query.
+        
+        Args:
+            query: Query to find relevant experiences for
+        
+        Returns:
+            List of relevant experiences sorted by relevance
+        """
+        results = []
+        
+        # Recall from episodic memory
+        if self.episodic:
+            try:
+                episodes = self.episodic.recall_similar(query)
+                for episode in episodes:
+                    results.append({
+                        'type': 'episode',
+                        'content': episode.context,
+                        'timestamp': episode.timestamp,
+                        'outcome': episode.outcome
+                    })
+            except Exception:
+                pass
+        
+        # Recall from semantic memory
+        if self.memory:
+            try:
+                memories = self.memory.graph.query_facts(
+                    subject="agent",
+                    predicate=f"command:{query[:50]}"
+                )
+                for memory in memories:
+                    results.append({
+                        'type': 'memory',
+                        'content': memory.object_value,
+                        'timestamp': memory.valid_from
+                    })
+            except Exception:
+                pass
+        
+        # Sort by recency
+        results.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+        
+        return results[:10]
 
 
 def record_user_action(root: str, action_type: str, **kwargs):

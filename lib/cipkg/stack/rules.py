@@ -549,16 +549,21 @@ RULES = [
     ("TAURI-UNGATED-COMMAND", rule_tauri_ungated_command),
 ]
 
-def run_rules(con, root, cfg):
+def enabled_rules(root, cfg):
+    """Rules this audit pass will actually run: built-in + custom minus
+    cfg.audit.ignore_rules. Shared with stack/audit so the auto-close sweep
+    only ever retires findings owned by rules that RAN this pass (BUG-015)."""
     from .custom_rules import get_all_rules
     skip = set(cfg.get("audit", {}).get("ignore_rules", []))
+    return [(rid, fn) for rid, fn in get_all_rules(root, cfg) if rid not in skip]
+
+def run_rules(con, root, cfg):
     findings = []
-    
+
     # Get both built-in and custom rules
-    all_rules = get_all_rules(root, cfg)
-    
+    all_rules = enabled_rules(root, cfg)
+
     for rid, fn in all_rules:
-        if rid in skip: continue
         try:
             findings.extend(fn(con, root, cfg))
         except Exception as e:

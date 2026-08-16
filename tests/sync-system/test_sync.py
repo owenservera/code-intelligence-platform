@@ -5,12 +5,13 @@ import shutil
 import tempfile
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add project root and sync_global to path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "sync_global"))
 
-from core.sync_engine import SyncEngine
-from core.validator import SyncValidator
-from core.rollback import RollbackManager
+from sync_global.core.sync_engine import SyncEngine
+from sync_global.core.validator import SyncValidator
+from sync_global.core.rollback import RollbackManager
 
 def test_sync_engine_initialization():
     """Test sync engine initialization."""

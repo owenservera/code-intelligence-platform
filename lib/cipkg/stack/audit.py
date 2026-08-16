@@ -1,7 +1,7 @@
 """Audit orchestration: run rules → upsert findings (stable IDs, auto-fix),
 quick wins, markdown reports, eslint ingestion, CI gate."""
 import hashlib, json, os, sys, time
-from ..base import repo_root, load_config
+from ..base import repo_root, load_config, log_swallowed
 from ..store import connect
 from .common import ensure
 from . import rules as R
@@ -14,11 +14,18 @@ def _fid(f):
 def audit(root=None, refresh=True):
     root = root or repo_root(); cfg = load_config(root); con = connect(root)
     ensure(con)
+    failed_indexers = []
     if refresh:
-        try: nextjs.index_routes(con, root)
-        except Exception: pass
-        try: prisma.index_stack(con, root)
-        except Exception: pass
+        # Surface sub-indexer failures instead of swallowing them (F-41/F-24):
+        # a broken nextjs/prisma indexer must be visible in the result so an
+        # under-populated index never looks like a healthy audit.
+        for name, idx in (("nextjs", nextjs.index_routes),
+                          ("prisma", prisma.index_stack)):
+            try:
+                idx(con, root)
+            except Exception as e:
+                log_swallowed(f"audit.{name}", e)
+                failed_indexers.append(name)
     findings = R.run_rules(con, root, cfg)
     seen = set()
     for f in findings:
@@ -31,12 +38,20 @@ def audit(root=None, refresh=True):
             "effort=excluded.effort, ts=excluded.ts",
             (fid, f["rule"], f["severity"], f["path"], f["line"], f["symbol_id"],
              f["title"], f["detail"], f["suggestion"], f["effort"], time.time()))
-    if seen:
+    # Auto-close stale findings ONLY for rules that actually ran this pass
+    # (BUG-015): pre-fix this swept every open row not in `seen`, silently
+    # retiring ESLINT/custom findings ingested through other surfaces.
+    enabled_ids = [rid for rid, _ in R.enabled_rules(root, cfg)]
+    if seen and enabled_ids:
         ph = ",".join("?" * len(seen))
+        rh = ",".join("?" * len(enabled_ids))
         con.execute(f"UPDATE findings SET status='fixed' "
-                    f"WHERE status='open' AND id NOT IN ({ph})", list(seen))
+                    f"WHERE status='open' AND rule IN ({rh}) "
+                    f"AND id NOT IN ({ph})", enabled_ids + list(seen))
     con.commit()
-    return summarize(con)
+    out = summarize(con)
+    out["failed_indexers"] = failed_indexers
+    return out
 
 def summarize(con):
     rows = con.execute("SELECT severity, COUNT(*) c FROM findings "

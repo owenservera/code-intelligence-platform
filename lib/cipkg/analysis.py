@@ -17,7 +17,7 @@ def repo_health_report(root=None):
     health_score = _calculate_health_score(con, cfg, root)
     critical_issues = _list_critical_issues(con)
     high_priority = _list_high_priority(con)
-    test_coverage = gapfill.coverage()
+    test_coverage = gapfill.coverage(root)
     technical_debt = _inventory_technical_debt(con)
     hotspots = _identify_hotspots(con)
     recommendations = _generate_recommendations(con, critical_issues, high_priority, technical_debt)
@@ -32,29 +32,36 @@ def repo_health_report(root=None):
         "recommendations": recommendations
     }
 
+def _open_findings(con):
+    """Read open audit findings directly from the stack findings table.
+
+    The stack `findings` table is created lazily by the audit surface, so an
+    index that has never been audited simply has none — which must be scored
+    as a clean (0 severity) state, never trigger a "stack pack unavailable"
+    fallback. Reading the table here removes the dependency on a stack-pack
+    method that exists nowhere in this codebase (pre-fix BUG-013/F-01).
+    """
+    try:
+        rows = con.execute("SELECT * FROM findings WHERE status='open'")
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
 def _calculate_health_score(con, cfg, root):
     """Calculate overall health score (0-100)."""
     # Get basic stats
     total_symbols = con.execute("SELECT COUNT(*) FROM symbols").fetchone()[0]
-    
-    if total_symbols == 0:
-        return 50  # Neutral score for empty repo
-    
+
     # Test coverage component
     tested = con.execute("SELECT COUNT(*) FROM symbols WHERE id IN (SELECT DISTINCT src FROM edges WHERE kind='tested_by')").fetchone()[0]
     coverage_pct = (tested / total_symbols) * 100 if total_symbols > 0 else 0
-    
-    # Quality component (findings)
-    try:
-        from .stack import nextjs as sn
-        findings = sn.list_findings(con)
-        critical_count = sum(1 for f in findings if f.get("severity") == "critical")
-        high_count = sum(1 for f in findings if f.get("severity") == "high")
-        quality_score = max(0, 100 - (critical_count * 20) - (high_count * 10))
-    except Exception as e:
-        from .base import log_swallowed
-        log_swallowed("analysis._calculate_health_score/quality", e)
-        quality_score = 80  # Default if stack pack unavailable
+
+    # Quality component (open findings from the audit stack)
+    findings = _open_findings(con)
+    critical_count = sum(1 for f in findings if f.get("severity") == "critical")
+    high_count = sum(1 for f in findings if f.get("severity") == "high")
+    quality_score = max(0, 100 - (critical_count * 20) - (high_count * 10))
     
     # Freshness component
     try:
@@ -86,23 +93,16 @@ def _list_critical_issues(con):
     issues = []
     
     # Security findings
-    try:
-        from .stack import nextjs as sn
-        findings = sn.list_findings(con)
-        for f in findings:
-            if f.get("severity") == "critical":
-                issues.append({
-                    "type": "security",
-                    "rule": f.get("rule"),
-                    "path": f.get("path"),
-                    "line": f.get("line"),
-                    "title": f.get("title"),
-                    "suggestion": f.get("suggestion")
-                })
-    except Exception as e:
-        from .base import log_swallowed
-        log_swallowed("analysis._list_critical_issues/security", e)
-        pass
+    for f in _open_findings(con):
+        if f.get("severity") == "critical":
+            issues.append({
+                "type": "security",
+                "rule": f.get("rule"),
+                "path": f.get("path"),
+                "line": f.get("line"),
+                "title": f.get("title"),
+                "suggestion": f.get("suggestion")
+            })
     
     # Untested load-bearing symbols
     for row in con.execute("""
@@ -131,22 +131,15 @@ def _list_high_priority(con):
     items = []
     
     # Code duplication
-    try:
-        from .stack import nextjs as sn
-        findings = sn.list_findings(con)
-        for f in findings:
-            if f.get("severity") == "high" or f.get("rule") == "QA-DUP":
-                items.append({
-                    "type": "quality",
-                    "rule": f.get("rule"),
-                    "path": f.get("path"),
-                    "title": f.get("title"),
-                    "suggestion": f.get("suggestion")
-                })
-    except Exception as e:
-        from .base import log_swallowed
-        log_swallowed("analysis._list_high_priority/duplication", e)
-        pass
+    for f in _open_findings(con):
+        if f.get("severity") == "high" or f.get("rule") == "QA-DUP":
+            items.append({
+                "type": "quality",
+                "rule": f.get("rule"),
+                "path": f.get("path"),
+                "title": f.get("title"),
+                "suggestion": f.get("suggestion")
+            })
     
     # High complexity functions
     for row in con.execute("""

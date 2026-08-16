@@ -1,294 +1,406 @@
-# CIP - Agent Guidance
+# AGENTS.md - CIP Code Intelligence Platform
 
-## Project Overview
+**Repository:** code-intelligence-platform
+**Version:** 2.1
+**Last Updated:** 2026
 
-CIP (Code Intelligence Platform) is a continuously updated model of your codebase — structure, history, tests, runtime health, and semantic audit. It helps AI agents and developers navigate complex codebases efficiently through intelligent indexing and retrieval.
+## Purpose
 
-### Key Components
-- **Indexer**: Parses and chunks code files
-- **Embedder**: Generates semantic embeddings (supports multiple backends)
-- **Vector Store**: SQLite-based vector storage
-- **Retriever**: Hybrid lexical + semantic search
-- **Auditor**: Quality rule engine
-- **Repo Settings System**: Automatic repo-specific configuration
-- **Sync System**: Automated development-to-production synchronization
+This file provides AI agents with the context, rules, and capabilities needed to effectively use and contribute to the CIP Code Intelligence Platform.
 
-### Architecture Summary
+## Canonical Context Session Rules (120K) - CRITICAL
+
+**Agents MUST work in 120K-token context sessions. This is mandatory, not optional.**
+
+### Why This Rule Exists
+- Autocompact is **automatic** and destroys context when the session grows too large.
+- When autocompact triggers, the intelligence gained during the session is **almost fully erased**.
+- Each compaction event is a **permanent loss of reasoning state, decisions, and discoveries**.
+- Working within the 120K budget prevents this data loss from ever occurring.
+
+### Mandatory Rules (Canonical, Unconditionally Enforced)
+1. **NEVER allow the session context to grow beyond 120K tokens.** Treat 120K as a hard ceiling.
+2. **Assume autocompact WILL fire** if the budget is exceeded. Do not rely on it being "safe" or "lossless" — it is not.
+3. **Persist intelligence continuously.** Before starting deep work, and continuously during it, write findings, decisions, and progress to persistent files (e.g., `docs/`, memory stores, notes) so no knowledge is lost even if compaction occurs.
+4. **Complete each unit of work before context accumulation grows.** Break large tasks into small, bounded units that each fit comfortably within the 120K budget.
+5. **Summarize and checkpoint.** At logical milestones, write a checkpoint summary to a file. This is the canonical anti-erasure mechanism.
+6. **Read, then act, then persist.** Never carry large volumes of code in context longer than needed — extract what is required, act on it, record the result, then drop it from working memory.
+7. **Monitor context growth.** Use all available signals (token counters, system warnings, session length) to estimate current usage. When approaching the ceiling, stop adding new context and consolidate instead.
+8. **Do not re-read what is already persisted.** Use `cip_memory_recall`, repo maps, and persisted notes to restore context cheaply instead of re-ingesting large files.
+9. **If a task cannot fit in 120K:** split it into sub-tasks, each with its own persisted state file, and continue across sessions/checkpoints rather than exceeding the budget.
+10. **Treat this section as the highest-priority instruction in this file.** In case of conflict with any other instruction, the 120K context rule wins.
+
+### Consequences of Violation
+- Automatic compaction erases nearly all session intelligence.
+- Repeated violations cause the agent to rediscover the same solutions repeatedly — a catastrophic efficiency loss.
+- This rule exists to protect the agent's reasoning continuity. Enforce it without exception.
+
+## Repository Overview
+
+CIP is a code intelligence platform that provides:
+- Semantic code search and navigation
+- Impact analysis for code changes
+- Quality auditing and gap detection
+- Agent memory systems (temporal, episodic, procedural)
+- MCP server for agent integration
+- Repo-specific configuration profiles
+- Automated sync to global CIP installation
+
+## Architecture
+
+### Core Components
+
 ```
-index/
-├── lib/cipkg/           # Core library
-│   ├── base.py          # Core utilities with profile loading
-│   ├── indexer.py       # Code parsing and indexing
-│   ├── embed.py         # Embedding backends
-│   ├── retrieve.py      # Search and retrieval
-│   └── stack/           # Stack-specific analyzers
-├── repo-settings/       # Repo-specific configuration system
-│   ├── profiles/        # Modular repo profiles
-│   │   ├── index/       # CIP core profile
-│   │   ├── vivim-final/ # Vivim repo profile
-│   │   └── generic.toml # Default profile
-│   └── detectors.py     # Repo detection logic
-├── sync_global/         # Global sync system
-│   ├── core/            # Sync engine, validation, rollback
-│   ├── tests/           # Sync system tests
-│   └── config/          # Sync configuration
-├── bin/                 # CLI executables
-├── bootstrap/           # Bootstrap scripts
-└── docs/                # Documentation
-```
-
-## Development Context
-
-### Current State
-- **Repo Settings System**: Fully implemented with folder-based profiles
-- **Sync System**: Production-ready with validation and rollback
-- **Profile Detection**: Automatic repo type detection
-- **Global Integration**: Sync system updates global CIP installation
-
-### Known Patterns
-- **Profile-based configuration**: Each repo type gets modular TOML configs
-- **Automatic detection**: No manual config.toml editing required
-- **Safety-first sync**: Multiple validation gates and automatic rollback
-- **Modular architecture**: Clean separation of concerns across systems
-
-### Conventions Used
-- **TOML for configuration**: All configs use TOML format
-- **Folder-based profiles**: Complex repos use folder structure, simple repos use single file
-- **Hybrid loading**: System supports both folder-based and single-file profiles
-- **UTF-8 encoding**: All files use UTF-8 encoding with Windows compatibility
-
-## Component Guide
-
-### Repo Settings System
-
-#### Architecture
-- **Location**: `repo-settings/`
-- **Purpose**: Centralized repo-specific CIP configurations
-- **Detection**: Automatic repo type detection via file markers
-- **Loading**: Hybrid system supports folder-based and single-file profiles
-
-#### Profile Structure
-```
-repo-settings/profiles/<repo-type>/
-├── main.toml           # Core profile settings
-├── python.toml         # Python-specific config
-├── typescript.toml     # TypeScript/React config
-├── retrieval.toml      # Retrieval settings
-├── stack.toml          # Stack-specific settings
-└── custom_rules.toml   # Custom rules config
+lib/cipkg/
++-- indexer.py          # File parsing and indexing
++-- embed.py            # Embedding generation
++-- retrieve.py         # Search and retrieval
++-- store.py            # SQLite storage layer
++-- analysis.py         # Health and quality analysis
++-- context_manager.py  # Agent context management
++-- learning_system.py  # Agent learning
++-- memory/             # Memory subsystems
+|   +-- temporal_graph.py  # Temporal Knowledge Graph
+|   +-- episodic.py        # Episodic memory
+|   +-- consolidation.py   # Memory consolidation
++-- stack/              # Stack-specific analyzers
++-- terminal_dashboard.py # TUI dashboard
++-- server.py           # MCP server
++-- cli.py              # Command-line interface
++-- repo-settings/      # Repo-specific configuration
++-- sync_global/        # Global sync system
 ```
 
-#### Detection Logic
-- **Index repo**: Checks for `lib/cipkg` + "Code Intelligence Platform" in README
-- **Vivim repo**: Checks for "vivim-final" or "13 engine layers" in AGENTS.md
-- **Generic**: Default fallback for unrecognized repos
+### Data Flow
 
-#### Adding New Profiles
-1. Create profile folder: `repo-settings/profiles/<repo-name>/`
-2. Add modular config files (main.toml, language-specific files, etc.)
-3. Add detection logic to `detectors.py`
-4. Test profile loading with sync system
+1. **Indexing**: Files -> Parser -> Symbols/Chunks -> Store
+2. **Embedding**: Chunks -> Embedder -> Vectors -> Store
+3. **Search**: Query -> Retriever -> Results -> Context Manager
+4. **Memory**: Actions -> Learning System -> Memory Store
 
-### Sync System
+## Working Environment: Windows PowerShell
 
-#### Architecture
-- **Location**: `sync_global/`
-- **Purpose**: Safely sync development changes to global CIP installation
-- **Components**: Sync engine, validator, rollback manager
-- **Safety**: Pre/post validation, automatic backups, auto-rollback
+**Agents MUST assume this project is developed on Windows with PowerShell 7+ (pwsh) as the default shell.**
 
-#### Sync Process
-1. **Pre-sync validation**: Source files exist, target accessible
-2. **Backup creation**: Automatic backup before sync
-3. **Sync operation**: Copy files/directories to target
-4. **Post-sync validation**: Verify files copied correctly
-5. **CIP validation**: Test synced installation works
+### Mandatory Shell Rules
+1. **Default shell is PowerShell (pwsh).** Do not assume bash, sh, or cmd unless the user explicitly says otherwise.
+2. **Use PowerShell-native commands** (`Get-ChildItem`, `Get-Content`, `Set-Content`, `Remove-Item`, `New-Item`, `Test-Path`, `Select-String`) instead of Unix tools (`ls`, `cat`, `rm`, `grep`, `touch`).
+3. **Quote paths with spaces** using double quotes when invoking executables, e.g. `& "C:\Program Files\Python\python.exe" script.py`.
+4. **Use the call operator `&`** to run native executables whose paths contain spaces.
+5. **Path syntax is backslash-based** (`C:\0-BlackBoxProject-0\index`), not forward-slash. Never hardcode `/` separators for Windows paths.
+6. **Use the `&&` / `;` chaining** for sequential commands as in any shell; PowerShell 7 supports `&&` for "and-if-successful" and `;` for unconditional sequencing.
+7. **`py` / `python` launchers:** prefer `python` when running scripts; if the environment is a venv, activate it first (`.\venv\Scripts\Activate.ps1`) or call the venv interpreter directly.
+8. **Environment variables use `$env:NAME`** (e.g., `$env:CIP_ROOT`), not Unix `$NAME` or `export NAME`. Set them with `$env:CIP_ROOT = "C:\path"` or PowerShell syntax.
+9. **File encoding:** write files as UTF-8 (preferably UTF-8 with BOM for Windows-native tools) to avoid mojibake with PowerShell and Windows tools.
+10. **Line endings:** use LF (`\n`) in repo files per project convention, even though Windows editors may default to CRLF. Do not convert existing files.
+11. **`git` works identically**, but shell commands around it must be PowerShell syntax.
+12. **Pip installs:** use `pip install -r requirements.txt` (works in PowerShell the same as other shells); if a `pip` shebang issue appears, use `python -m pip`.
 
-#### Usage
+### Environment Variables (Windows form)
+```powershell
+$env:CIP_ROOT    = "C:\0-BlackBoxProject-0\index"
+$env:CIP_CONFIG  = "C:\0-BlackBoxProject-0\index\config.toml"
+$env:CIP_LOG_LEVEL = "INFO"
+$env:CIP_DAEMON_PORT = 8765
+$env:CIP_MCP_PORT = 8080
+```
+
+## Build & Test Commands
+
+### Installation
 ```bash
-# Preview sync
-python sync_global/sync.py --dry-run
-# or
-sync --dry-run
-
-# Sync with CIP testing
-python sync_global/sync.py --test-cip
-# or
-sync --test-cip
-
-# List backups
-python sync_global/sync.py --list-backups
-# or
-sync --list-backups
-
-# Rollback if needed
-python sync_global/sync.py --rollback backup_20260815_174404
-# or
-sync --rollback backup_20260815_174404
+pip install -r requirements.txt
+cip init
 ```
 
-#### Configuration
-- **Location**: `sync_global/config/sync_config.toml`
-- **Items to sync**: repo-settings, lib/cipkg/base.py, config.default.toml
-- **Validation**: Pre-sync, post-sync, CIP tests
-- **Rollback**: Auto-rollback on failure, max 5 backups
-
-### Core CIP Components
-
-#### Base System (`lib/cipkg/base.py`)
-- **Profile loading**: Automatic repo detection and profile application
-- **File iteration**: Optimized with include/exclude lists
-- **Configuration**: Merges defaults, profiles, and local overrides
-- **Token estimation**: Token counting for context management
-
-#### Profile Integration
-- **Detection**: Calls `detect_repo_type()` from repo-settings
-- **Loading**: Uses `load_repo_profile()` with hybrid support
-- **Merging**: Flattens profile structure into main config
-- **Overrides**: Local `.cip/config.toml` can override profile settings
-
-## Development Workflow
-
-### Making Changes to CIP Core
-1. **Modify core files** in `lib/cipkg/`
-2. **Test locally** with current repo
-3. **Update sync config** if new files need syncing
-4. **Run sync**: `python sync_global/sync.py --test-cip`
-5. **Verify global CIP** works correctly
-
-### Adding New Repo Profiles
-1. **Create profile folder**: `repo-settings/profiles/<repo-name>/`
-2. **Add config files**: main.toml, language-specific files
-3. **Add detection logic** to `detectors.py`
-4. **Test profile loading**: Use sync system validation
-5. **Sync to global**: `python sync_global/sync.py --test-cip`
-
-### Modifying Sync System
-1. **Update sync components** in `sync_global/core/`
-2. **Run sync tests**: `python tests/sync-system/test_sync.py`
-3. **Test validation**: `python tests/sync-system/test_validation.py`
-4. **Dry-run sync**: `python sync_global/sync.py --dry-run`
-5. **Full sync test**: `python sync_global/sync.py --test-cip`
-
-### Updating Profile System
-1. **Modify detectors** in `repo-settings/detectors.py`
-2. **Update profile loading** if needed
-3. **Test detection** with various repo types
-4. **Sync changes**: `python sync_global/sync.py --test-cip`
-5. **Verify profile loading** in global CIP
-
-## Common Tasks
-
-### Adding a New Repo Type
-```python
-# In repo-settings/detectors.py
-def detect_repo_type(root):
-    # Add new detection logic
-    if some_condition:
-        return "new-repo-type"
-    # ... existing logic
-```
-
+### Testing
 ```bash
-# Create profile folder
-mkdir repo-settings/profiles/new-repo-type
+# Run all tests
+cip selftest
 
-# Add config files
-# main.toml, language-specific files, etc.
+# Run specific tests
+python -m pytest tests/test_integration.py -v
 
-# Test and sync
-python sync_global/sync.py --test-cip
+# Run with coverage
+python -m pytest tests/ --cov=cipkg --cov-report=term-missing
 ```
 
-### Updating Sync Items
-```toml
-# In sync_global/config/sync_config.toml
-[items]
-files = [
-    "repo-settings",
-    "lib/cipkg/base.py",
-    "lib/cipkg/new_module.py",  # Add new items
-    "config.default.toml"
-]
-```
-
-### Testing Profile Loading
-```python
-# Test detection
-python -c "import sys; sys.path.insert(0, 'repo-settings'); from detectors import detect_repo_type; print(detect_repo_type('.'))"
-
-# Test profile loading
-python -c "import sys; sys.path.insert(0, 'repo-settings'); from detectors import load_repo_profile; print(load_repo_profile('index'))"
-```
-
-### Running Sync System Tests
+### Development
 ```bash
-# All sync tests
-python tests/sync-system/run_all_tests.py
+# Start development server
+cip daemon start
 
-# Specific test suites
-python tests/sync-system/test_sync.py
-python tests/sync-system/test_validation.py
-python tests/sync-system/test_cip_global.py
+# Start MCP server
+cip mcp-server --port 8080
+
+# Start dashboard
+cip dashboard
 ```
 
-## Known Issues
+## MCP Tools Available
 
-### Current Limitations
-- **CIP command not in PATH**: Global CIP tests may fail if CIP not in system PATH
-- **Profile overlap**: Multiple detection conditions could match same repo
-- **Sync scope**: Currently only syncs specific files, not entire CIP installation
+Agents can use these tools via the MCP server:
 
-### Workarounds
-- **PATH issues**: Use full path to CIP executable or add to PATH manually
-- **Detection conflicts**: Order detection conditions by specificity
-- **Limited sync**: Add more items to sync config as needed
+### Search & Navigation
+- `cip_search`: Hybrid semantic + lexical search
+  - Parameters: `query` (string), `limit` (int, default 10)
+  - Returns: List of code snippets with relevance scores
 
-### Future Improvements
-- **Incremental sync**: Only sync changed files
-- **Profile inheritance**: Allow profiles to inherit from base profiles
-- **Remote sync**: Support for remote CIP installations
-- **GUI interface**: Visual sync management
+- `cip_symbol`: Find symbol definition
+  - Parameters: `name` (string)
+  - Returns: Symbol location and metadata
 
-## File Organization
+- `cip_refs`: Find all references to a symbol
+  - Parameters: `symbol_id` (string)
+  - Returns: List of referencing locations
 
-### Root Directory (Clean)
-- **Essential files only**: AGENTS.md, README.md, LICENSE, config.default.toml, install.sh, ontology.json, .gitignore
-- **Core directories**: bin/, bootstrap/, data/, docs/, lib/, repo-settings/, sync_global/, tests/
+### Analysis & Impact
+- `cip_analyze`: Repository health analysis
+  - Parameters: None
+  - Returns: Health score, issues, recommendations
 
-### Documentation Structure
-- **Architecture**: System architecture and design docs
-- **User Guide**: Installation, commands, configuration
-- **API**: MCP server, HTTP API, Python API
-- **Development**: Setup, testing, contributing
-- **Sync System**: Sync system documentation
-- **Repo Profiles**: Profile system documentation
-- **Internal**: Integration plans, master plans
+- `cip_impact`: Impact analysis for code changes
+  - Parameters: `symbol_id` (string)
+  - Returns: Affected files, test files, impact level
+
+- `cip_audit`: Quality audit with custom rules
+  - Parameters: `refresh` (bool, default false)
+  - Returns: Findings by severity
+
+### Context & Memory
+- `cip_suggest_context`: Get context for editing a file
+  - Parameters: `file` (string)
+  - Returns: Symbols, dependencies, tests, gaps
+
+- `cip_gap_fill`: Find knowledge gaps
+  - Parameters: None
+  - Returns: Missing docs, tests, type hints
+
+- `cip_memory_recall`: Recall relevant past experiences
+  - Parameters: `query` (string)
+  - Returns: Relevant episodes and memories
+
+### System Operations
+- `cip_sync`: Sync index with repository
+  - Parameters: None
+  - Returns: Files updated, symbols added
+
+- `cip_daemon_status`: Check daemon status
+  - Parameters: None
+  - Returns: Daemon state, uptime, cache stats
+
+## Code Style & Conventions
+
+### Python Style
+- Follow PEP 8
+- Use type hints for all function signatures
+- Docstrings in Google style
+- Maximum line length: 100 characters
+
+### Naming Conventions
+- Functions: `snake_case`
+- Classes: `PascalCase`
+- Constants: `UPPER_SNAKE_CASE`
+- Private methods: `_leading_underscore`
+
+### Error Handling
+- Use specific exceptions, not bare `except:`
+- Log all swallowed exceptions with `log_swallowed()`
+- Provide meaningful error messages
+
+### Database Operations
+- Use parameterized queries (never string interpolation)
+- Batch operations for performance
+- Always commit transactions
+- Use context managers for connections
+
+## Testing Requirements
+
+### Test Coverage
+- All new features must have tests
+- Minimum 80% code coverage
+- Integration tests for critical paths
 
 ### Test Structure
-- **Unit tests**: Core component tests
-- **Integration tests**: System integration tests
-- **Sync system tests**: Sync system validation
-- **E2E tests**: End-to-end testing
+```python
+def test_feature_name():
+    """Test description."""
+    # Arrange
+    setup_test_data()
 
-## Contact/Support
+    # Act
+    result = function_under_test()
 
-### Issue Reporting
-- **GitHub issues**: Use project issue tracker
-- **Documentation**: Check docs/ for guidance
-- **Logs**: Check sync_global/logs/ for sync issues
+    # Assert
+    assert result == expected_value
+```
 
-### Contribution Process
-1. **Test changes** locally
-2. **Run sync system tests**
-3. **Sync to global** with validation
-4. **Update documentation** as needed
-5. **Submit issues** for bugs or improvements
+### Running Tests
+```bash
+# Before committing
+cip selftest
 
-### Getting Help
-- **Architecture docs**: docs/architecture/
-- **User guide**: docs/user-guide/
-- **Sync system**: docs/sync-system/
-- **Developer guide**: docs/development/
+# Specific test file
+python -m pytest tests/test_feature.py -v
 
-This guide provides comprehensive context for AI agents working on the CIP codebase, covering all major systems and providing clear development workflows.
+# With coverage
+python -m pytest tests/ --cov=cipkg --cov-report=term-missing
+```
+
+## Security Guidelines
+
+### Never Commit
+- API keys or secrets
+- Database credentials
+- Personal information
+- Large binary files
+
+### Code Security
+- Validate all user inputs
+- Sanitize file paths
+- Use parameterized SQL queries
+- Avoid `eval()` and `exec()`
+
+## Deployment
+
+### Production Checklist
+- [ ] All tests passing
+- [ ] Dependencies pinned in requirements.txt
+- [ ] Configuration validated
+- [ ] Logging configured
+- [ ] Error handling comprehensive
+- [ ] Documentation updated
+
+### Environment Variables
+```bash
+CIP_ROOT=/path/to/repository
+CIP_CONFIG=/path/to/config.toml
+CIP_LOG_LEVEL=INFO
+CIP_DAEMON_PORT=8765
+CIP_MCP_PORT=8080
+```
+
+## Key Files to Know
+
+| File | Purpose |
+|------|---------|
+| `lib/cipkg/cli.py` | CLI entry point and command dispatch |
+| `lib/cipkg/indexer.py` | Core indexing logic |
+| `lib/cipkg/retrieve.py` | Search and retrieval |
+| `lib/cipkg/store.py` | Database operations |
+| `lib/cipkg/server.py` | MCP server implementation |
+| `lib/cipkg/context_manager.py` | Agent context building |
+| `lib/cipkg/learning_system.py` | Agent learning and memory |
+| `lib/cipkg/memory/temporal_graph.py` | Temporal Knowledge Graph |
+| `lib/cipkg/memory/episodic.py` | Episodic memory system |
+| `lib/cipkg/memory/consolidation.py` | Memory consolidation |
+| `config.default.toml` | Default configuration |
+| `AGENTS.md` | This file |
+
+## Detection-System Campaign (CIP-product-wide, not repo-specific)
+
+CIP is a general polyglot code-indexing + issue-detection SYSTEM. `docs/dev/cip-bugfix-campaign/` is the
+active campaign that (a) fixes CIP's own correctness bugs (evidence in
+`09-bugs-and-issues.md` — **never edit**) and (b) ships the detection features INTO CIP's product surfaces
+(`stack/rules.py`, `analysis.py`, `doctor.py`, CI gates) so every repo CIP indexes benefits.
+
+- **Read first:** `RUNBOOK.md` §0 (what the campaign is) + `PROFILE.cip.md` (CIP's wiring + per-language
+  detector instruments: pyflakes, eslint, clippy, etc., extension-dispatched).
+- **Method:** detect-first / fix-last — prove a detector fires on broken evidence (RECALL) AND stays
+  silent on clean code (PRECISION, 0 FPs on `tests/data/clean_ref/`), regression-lock it in
+  `tests/detectors/`, then apply the fix. Detectors and fixes are CIP product features for all future use,
+  never one-off patches.
+- **Planned surface checks this campaign must keep clean:** `cip audit`, `cip analyze`, `cip doctor`
+  (`--static`/`--runtime`/`--config`), `cip gate`, `cip sync`.
+- **Autonomous-run rule (RUNBOOK §6):** todo lists start with restore-reads and end with a checkpoint;
+  never let session context near the 120K ceiling without persisting to TRACKER/LEDGER/CHECKPOINT.
+
+## Recent Changes (v2.0)
+
+### New Features
+- Temporal Knowledge Graph for agent memory
+- Episodic Memory for learning from experiences
+- AST-aware chunking for better semantics
+- SCIP integration for precise symbol resolution
+- Repository maps for token-efficient context
+- Impact analysis engine
+- Gap detection system
+- Memory consolidation daemon
+- Context management system
+- Learning system for pattern detection
+
+### Bug Fixes
+- Fixed recursive loop in dashboard alerts
+- Fixed missing CLI handlers
+- Fixed embedder fallback chain
+- Fixed silent exception handling
+- Fixed batch indexing performance
+
+### Breaking Changes
+- `handle_suggest_context_command` now requires `--file` argument
+- Memory system requires migration from JSONL to SQLite
+- MCP server port changed from 8765 to 8080
+
+## Agent Workflows
+
+### Workflow 1: Understanding a Codebase
+```
+1. cip_analyze -> Get repository health overview
+2. cip_search "main entry point" -> Find key files
+3. cip_suggest_context --file src/main.py -> Understand structure
+4. cip_gap_fill -> Identify areas needing attention
+```
+
+### Workflow 2: Making a Safe Change
+```
+1. cip_search "function to modify" -> Find target
+2. cip_impact --symbol ID -> Understand blast radius
+3. cip_suggest_context --file target.py -> Get editing context
+4. Make changes
+5. cip_sync -> Update index
+6. cip_audit -> Verify quality
+```
+
+### Workflow 3: Debugging an Issue
+```
+1. cip_search "error message" -> Find related code
+2. cip_memory_recall "similar error" -> Check past experiences
+3. cip_refs "problematic_function" -> Find all usages
+4. cip_impact --symbol ID -> Understand dependencies
+```
+
+### Workflow 4: Code Review
+```
+1. cip_suggest_context --file src/module.py -> Get file context
+2. cip_gap_fill -> Check for gaps in the file
+3. cip_audit -> Analyze quality
+4. Generate review with context, gaps, and findings
+```
+
+## Support & Resources
+
+- **Documentation**: `docs/` directory
+- **Tests**: `tests/` directory
+- **Issues**: GitHub Issues
+- **Discussions**: GitHub Discussions
+
+## Agent Checklist
+
+Before making changes:
+- [ ] Read this AGENTS.md file
+- [ ] Understand the architecture
+- [ ] Check existing tests
+- [ ] Follow code style guidelines
+- [ ] Run tests before committing
+- [ ] Update documentation if needed
+
+After making changes:
+- [ ] All tests pass
+- [ ] Code follows style guidelines
+- [ ] Documentation updated
+- [ ] No security issues introduced
+- [ ] Performance not degraded
+
+---
+
+**Remember:** CIP is designed to help agents understand codebases deeply. Use its capabilities to make informed, safe, and effective changes.

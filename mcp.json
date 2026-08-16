@@ -1,0 +1,205 @@
+{
+  "name": "cip-code-intelligence",
+  "version": "2.0.0",
+  "description": "Code Intelligence Platform - Semantic search, impact analysis, and agent memory",
+  "author": "owenservera",
+  "license": "MIT",
+  "server": {
+    "command": "cip",
+    "args": ["mcp-server"],
+    "env": {
+      "CIP_ROOT": "${workspaceFolder}",
+      "CIP_CONFIG": "${workspaceFolder}/.cip/config.toml"
+    }
+  },
+  "tools": [
+    {
+      "name": "cip_search",
+      "description": "Search codebase using hybrid semantic and lexical search",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of results",
+            "default": 10
+          },
+          "search_type": {
+            "type": "string",
+            "enum": ["hybrid", "semantic", "lexical"],
+            "description": "Type of search to perform",
+            "default": "hybrid"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "cip_analyze",
+      "description": "Analyze repository health and quality",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "cip_audit",
+      "description": "Run quality audit with custom rules",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "refresh": {
+            "type": "boolean",
+            "description": "Force refresh of audit results",
+            "default": false
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "cip_impact",
+      "description": "Analyze impact of changing a symbol",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "symbol_id": {
+            "type": "string",
+            "description": "ID of the symbol to analyze"
+          }
+        },
+        "required": ["symbol_id"]
+      }
+    },
+    {
+      "name": "cip_gap_fill",
+      "description": "Find knowledge gaps (missing docs, tests, types)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "cip_suggest_context",
+      "description": "Get context for editing a file",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "Path to the file"
+          }
+        },
+        "required": ["file"]
+      }
+    },
+    {
+      "name": "cip_sync",
+      "description": "Sync index with repository changes",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "cip_daemon_status",
+      "description": "Check daemon status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "cip_memory_recall",
+      "description": "Recall relevant past experiences",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Query to recall memories for"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "cip_repo_map",
+      "description": "Generate token-efficient repository map",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "max_tokens": {
+            "type": "integer",
+            "description": "Maximum tokens for the map",
+            "default": 4096
+          }
+        },
+        "required": []
+      }
+    }
+  ],
+  "resources": [
+    {
+      "uri": "cip://repository/health",
+      "name": "Repository Health",
+      "description": "Current repository health score and metrics",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "cip://repository/gaps",
+      "name": "Knowledge Gaps",
+      "description": "Current knowledge gaps in the codebase",
+      "mimeType": "application/json"
+    },
+    {
+      "uri": "cip://memory/recent",
+      "name": "Recent Memories",
+      "description": "Recently stored agent memories",
+      "mimeType": "application/json"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "code_review",
+      "description": "Generate a code review for a file",
+      "arguments": [
+        {
+          "name": "file",
+          "description": "File to review",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "impact_assessment",
+      "description": "Assess impact of a proposed change",
+      "arguments": [
+        {
+          "name": "symbol",
+          "description": "Symbol to assess",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "debug_assistance",
+      "description": "Get debugging assistance for an error",
+      "arguments": [
+        {
+          "name": "error",
+          "description": "Error message or stack trace",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

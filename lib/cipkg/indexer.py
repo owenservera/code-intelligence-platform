@@ -38,16 +38,41 @@ def _get_ts_resolver(root):
     return _TS_RESOLVERS[root]
 
 def resolve_import(src_path, spec, all_paths, resolver=None):
+    """Resolve an import spec to a repo-root-relative path, or None.
+
+    Python specs keep their leading dots (``from .base import``, ``from ..stack.audit
+    import``); the relative branch must convert those into real parent hops and
+    emit a plain repo path (never a ``lib/cipkg/.base.py`` artifact — F-22).
+    Absolute repo-local specs (``cipkg.module``) are tried under the common
+    source roots ``lib/`` and ``src/``.
+    """
     spec = spec.strip()
     if spec.startswith("."):
-        base = os.path.normpath(os.path.join(os.path.dirname(src_path), spec)).replace(os.sep, "/")
-        cands = [base] + [base + e for e in RES_EXTS] + [base + "/index" + e for e in RES_EXTS[:4]]
+        m = re.match(r"^\.+", spec)
+        levels = m.end()
+        rest = spec[levels:]
+        base_dir = os.path.dirname(src_path)
+        for _ in range(levels - 1):       # "." = sibling dir; ".." = one up, ...
+            base_dir = os.path.dirname(base_dir)
+        if rest:
+            # Dotted names are always package separators: ``stack.common`` is the
+            # submodule ``stack/common``, never a literal ``stack.common`` file.
+            mod = rest.replace(".", "/")
+            core = os.path.normpath(os.path.join(base_dir, mod)).replace(os.sep, "/")
+            cands = [core + "/__init__.py"] + [core + e for e in RES_EXTS] \
+                + [core + "/index" + e for e in RES_EXTS]
+        else:                              # `from . import x` - the dir is the package
+            core = os.path.normpath(base_dir).replace(os.sep, "/")
+            cands = [core + "/__init__.py"]
         for c in cands:
-            if c in all_paths: return c
+            if c in all_paths:
+                return c
     elif re.fullmatch(r"[\w.]+", spec):
         base = spec.replace(".", "/")
-        for c in (base + ".py", base + "/__init__.py"):
-            if c in all_paths: return c
+        for pref in ("", "lib/", "src/"):
+            for c in (base + "/__init__.py", base + ".py"):
+                if pref + c in all_paths:
+                    return pref + c
     if resolver and resolver.enabled:                 # tsconfig aliases
         for c in resolver.candidates(spec, src_path):
             if c in all_paths: return c
@@ -217,32 +242,47 @@ def resolve_symbol_edges(con, cfg, dirty):
          new_edges)
     build_tested_by(con, cfg)
 
+def _is_backup_path(path: str) -> bool:
+    """True for a repo path under a backup/duplicate/generated tree.
+
+    Segment-aware (agrees with `tests/detectors/s6_index_integrity._is_backup_rel`):
+    a path segment that IS `backups`/`htmlcov`, starts `backup_`/`emergency_`, or
+    ends `.bak`/`.orig`. Test filenames merely *containing* "backup_" are not.
+    """
+    return any(
+        seg == "backups" or seg == "htmlcov"
+        or seg.startswith(("backup_", "emergency_"))
+        or seg.endswith((".bak", ".orig"))
+        for seg in path.replace("\\", "/").split("/")
+    )
+
 def build_tested_by(con, cfg):
-    """Build tested_by edges from test files to the symbols they test."""
+    """Build tested_by edges from test files to the symbols they test.
+
+    F-23: only symbols the test file *actually* imports/calls/references count.
+    No more name-mention matching against chunk text (that produced ~4.5k
+    invented edges from every symbol whose name merely appeared in a test file's
+    first chunk). Symbols living under backup/duplicate paths are dropped, and
+    edges keep the product convention `src` = tested symbol, `dst` = test file.
+    """
     con.execute("DELETE FROM edges WHERE kind='tested_by'")
     test_files = [r["path"] for r in con.execute("SELECT path FROM files")
                   if is_test_path(r["path"], cfg)]
-    
     new_edges = []
     for tf in test_files:
-        # Find symbols that test files import/call/reference
+        # Real imports/calls/references from this test file → symbol ids. After
+        # F-22 the `imports` edges actually resolve, so tested_by is grounded in
+        # the import graph instead of the name-mention heuristic.
         targets = {r["dst"] for r in con.execute(
             "SELECT dst FROM edges WHERE src_path=? AND kind IN ('imports','calls','references')", (tf,))}
-        
-        # Also look for direct symbol mentions in test files by name matching
-        # This catches cases where tests call functions without explicit imports
-        for row in con.execute("SELECT id, name FROM symbols WHERE kind IN ('function','method','class')"):
-            sym_id, sym_name = row["id"], row["name"]
-            # Check if test file contains the symbol name (simple heuristic)
-            chunk = con.execute("SELECT text FROM chunks WHERE path=? LIMIT 1", (tf,)).fetchone()
-            if chunk and sym_name in chunk["text"]:
-                targets.add(sym_id)
-        
         for t in targets:
-            srow = con.execute("SELECT path FROM symbols WHERE id=?", (t,)).fetchone()
-            if srow and srow["path"] != tf:
-                new_edges.append((t, tf, "tested_by", srow["path"]))
-    
+            srow = con.execute("SELECT id, path FROM symbols WHERE id=?", (t,)).fetchone()
+            if not srow or srow["path"] == tf:
+                continue
+            if _is_backup_path(srow["path"]):
+                continue           # backup/duplicate symbols are never "tested"
+            new_edges.append((srow["id"], tf, "tested_by", srow["path"]))
+
     if new_edges:
         bulk(con, "INSERT OR IGNORE INTO edges(src,dst,kind,src_path) VALUES(?,?,?,?)",
              new_edges)

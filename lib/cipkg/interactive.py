@@ -5,7 +5,7 @@ This module provides the main entry point for interactive mode, integrating
 all v2.0 features including context management, suggestions, workflows, learning,
 and UI components.
 """
-
+from __future__ import annotations
 
 from cipkg.context_manager import ContextManager, UnifiedContext
 from cipkg.suggestion_engine import SuggestionEngine

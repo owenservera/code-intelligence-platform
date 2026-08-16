@@ -12,9 +12,16 @@ log_level = "INFO"
 patterns = [
     "repo-settings/**/*",
     "lib/cipkg/*.py",
+    "lib/cipkg/memory/*.py",
+    "lib/cipkg/stack/*.py",
+    "lib/cipkg/static/**",
     "config.default.toml",
     "config.v2.default.toml",
-    "bin/*"
+    "ontology.json",
+    "mcp.json",
+    "AGENTS.md",
+    "bin/*",
+    "templates/*"
 ]
 
 # Exclusion patterns - files matching these will NOT be synced

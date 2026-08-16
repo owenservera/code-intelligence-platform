@@ -152,7 +152,7 @@ class CommandCategoryScreen(Screen):
     def _show_alert(self, message: str):
         """Show alert message with fallback if app doesn't support it."""
         if hasattr(self.app, 'show_alert'):
-            self._show_alert(message)
+            self.app.show_alert(message)
         else:
             # Fallback: print the message
             print(f"🔔 {message}")
@@ -581,6 +581,69 @@ class DashboardScreen(Screen):
             self.app.push_screen(MainNavigationScreen(self.root))
 
 
+class ErrorScreen(Screen):
+    """Error screen with recovery options."""
+    
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+    ]
+    
+    def __init__(self, root: str, init_state, error_message: str = None):
+        super().__init__()
+        self.root = root
+        self.init_state = init_state
+        self.error_message = error_message or "Unknown error occurred"
+    
+    def compose(self) -> ComposeResult:
+        """Compose the error UI."""
+        yield Header()
+        
+        with Vertical():
+            yield Static("╔═══════════════════════════════════════════════════════════════╗")
+            yield Static("║  ⚠️  CIP v2.0 - Error Detected                                ║")
+            yield Static("╠═══════════════════════════════════════════════════════════════╣")
+            yield Static(f"║  📁 Repository: {self.root[:45]:45} ║")
+            yield Static("╠═══════════════════════════════════════════════════════════════╣")
+            yield Static("║  Error Details:                                               ║")
+            yield Static(f"║  {self.error_message[:60]:60} ║")
+            yield Static("╠═══════════════════════════════════════════════════════════════╣")
+            yield Static("║  Recovery Options:                                            ║")
+            yield Button("🔄 Try Again", id="error_retry", variant="primary")
+            yield Button("🔧 Run Diagnostics", id="error_diagnose")
+            yield Button("💻 Use Traditional CLI", id="error_cli")
+            yield Button("📖 View Help", id="error_help")
+            yield Button("❌ Exit", id="error_exit")
+            yield Static("╚═══════════════════════════════════════════════════════════════╝")
+        
+        yield Footer()
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "error_retry":
+            # Re-initialize the app
+            from .init_detector import detect_init_status
+            self.app.init_state = detect_init_status(self.root)
+            self.app.on_mount()
+        
+        elif event.button.id == "error_diagnose":
+            # Run diagnostics
+            self.app.run_diagnostics()
+        
+        elif event.button.id == "error_cli":
+            # Exit and use traditional CLI
+            self.app.quit_app(use_cli=True)
+        
+        elif event.button.id == "error_help":
+            self.app.push_screen(HelpScreen())
+        
+        elif event.button.id == "error_exit":
+            self.app.quit_app()
+    
+    def action_back(self) -> None:
+        """Go back to previous screen."""
+        self.app.pop_screen()
+
+
 class CIPDashboardApp(App):
     """Main CIP Dashboard application."""
     
@@ -588,32 +651,75 @@ class CIPDashboardApp(App):
     Screen {
         layout: vertical;
     }
-    
+
     Static {
         padding: 0 1;
     }
-    
+
     Button {
         margin: 1 2;
         width: 100%;
     }
-    
+
     StatusCardWidget {
         border: solid green;
         padding: 1;
         margin: 1 0;
     }
-    
+
     CommandCategoryScreen {
         border: solid blue;
         padding: 1;
         margin: 1 0;
     }
-    
+
     MainNavigationScreen {
         border: solid yellow;
         padding: 1;
         margin: 1 0;
+    }
+
+    /* Smooth transitions */
+    Screen {
+        transition: opacity 300ms in_out_cubic;
+    }
+
+    Screen.-hidden {
+        opacity: 0;
+    }
+
+    /* Alert styling */
+    .alert-container {
+        align: center middle;
+        padding: 2;
+        border: solid red;
+        background: $surface;
+    }
+
+    .alert-message {
+        text-align: center;
+        padding: 1;
+    }
+
+    /* Loading indicator */
+    .loading {
+        dock: bottom;
+        height: 1;
+        background: $accent;
+        color: $text;
+    }
+
+    /* Progress bar */
+    .progress-bar {
+        width: 100%;
+        height: 1;
+        background: $surface-darken-1;
+    }
+
+    .progress-fill {
+        height: 1;
+        background: $accent;
+        transition: width 200ms linear;
     }
     """
     
@@ -623,12 +729,71 @@ class CIPDashboardApp(App):
         self.init_state = None
         self.alert_message = ""
     
-    def show_alert(self, message: str):
-        """Show an alert message to the user."""
+    def show_alert(self, message: str, alert_type: str = "info"):
+        """Show an alert message to the user using Textual's notification system."""
         self.alert_message = message
-        # In a real implementation, this would show a proper alert screen
-        # For now, we'll just print it
-        print(f"\n🔔 {message}\n")
+        
+        # Use Textual's built-in notification system if available
+        if hasattr(self, 'notify'):
+            # Map alert types to Textual severity
+            severity_map = {
+                "info": "information",
+                "success": "information",
+                "warning": "warning",
+                "error": "error"
+            }
+            severity = severity_map.get(alert_type, "information")
+            
+            # Add icon based on type
+            icon_map = {
+                "info": "ℹ️",
+                "success": "✅",
+                "warning": "⚠️",
+                "error": "❌"
+            }
+            icon = icon_map.get(alert_type, "ℹ️")
+            
+            self.notify(f"{icon} {message}", severity=severity, timeout=5)
+        else:
+            # Fallback: create a custom alert screen
+            self.push_screen(AlertScreen(message, alert_type))
+
+
+class AlertScreen(Screen):
+    """Modal alert screen."""
+    
+    BINDINGS = [
+        Binding("enter", "close", "Close"),
+        Binding("escape", "close", "Close"),
+    ]
+    
+    def __init__(self, message: str, alert_type: str = "info"):
+        super().__init__()
+        self.message = message
+        self.alert_type = alert_type
+    
+    def compose(self) -> ComposeResult:
+        """Compose alert UI."""
+        icon_map = {
+            "info": "ℹ️",
+            "success": "✅",
+            "warning": "⚠️",
+            "error": "❌"
+        }
+        icon = icon_map.get(self.alert_type, "ℹ️")
+        
+        with Container(classes="alert-container"):
+            yield Static(f"{icon} {self.message}", classes="alert-message")
+            yield Button("OK", id="alert_ok", variant="primary")
+    
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "alert_ok":
+            self.app.pop_screen()
+    
+    def action_close(self) -> None:
+        """Close the alert."""
+        self.app.pop_screen()
     
     def on_mount(self) -> None:
         """Initialize the app."""
@@ -806,49 +971,36 @@ class CIPDashboardApp(App):
         """Push the main navigation screen."""
         self.push_screen(MainNavigationScreen(self.root))
     
-    def quit_app(self) -> None:
+    def quit_app(self, use_cli: bool = False) -> None:
         """Exit the application."""
-        self.exit()
-
-
-class ErrorScreen(Screen):
-    """Error screen."""
+        if use_cli:
+            # Exit to traditional CLI
+            self.exit()
+        else:
+            self.exit()
     
-    def __init__(self, root: str, init_state):
-        super().__init__()
-        self.root = root
-        self.init_state = init_state
-    
-    def compose(self) -> ComposeResult:
-        """Compose the error UI."""
-        yield Static("╔═══════════════════════════════════════════════════════════════╗")
-        yield Static("║  CIP v2.0 - Error                                              ║")
-        yield Static("╠═══════════════════════════════════════════════════════════════╣")
-        yield Static("║  ⚠️  An error occurred while detecting repository status           ║")
-        yield Static("╠═══════════════════════════════════════════════════════════════╣")
-        yield Button("Try again", id="error_1")
-        yield Button("Run traditional CLI: cip --no-dashboard", id="error_2")
-        yield Button("Exit", id="error_3")
-        yield Static("╚═══════════════════════════════════════════════════════════════╝")
-    
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button press."""
-        if event.button.id == "error_1":
-            # Re-initialize the app
-            from .init_detector import detect_init_status
-            self.app.init_state = detect_init_status(self.root)
-            self.app.on_mount()
-        elif event.button.id == "error_2":
-            self.app.quit_app()
-        elif event.button.id == "error_3":
-            self.app.quit_app()
+    def run_diagnostics(self) -> None:
+        """Run system diagnostics."""
+        try:
+            from cipkg.selftest import selftest
+            self.show_alert("Running diagnostics...", "info")
+            # Run selftest
+            result = selftest(self.root)
+            self.show_alert(f"Diagnostics completed: {result}", "success")
+        except Exception as e:
+            self.show_alert(f"Diagnostics failed: {str(e)}", "error")
 
 
 class HelpScreen(Screen):
     """Help screen."""
     
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+    ]
+    
     def compose(self) -> ComposeResult:
         """Compose the help UI."""
+        yield Header()
         yield Static("CIP v2.0 - Help")
         yield Static("")
         yield Static("Keyboard Shortcuts:")
@@ -862,14 +1014,18 @@ class HelpScreen(Screen):
         yield Static("  cip symbol <name>     - Find symbol definitions")
         yield Static("  cip analyze           - Get repository health report")
         yield Static("  cip audit             - Run audit rules")
-        yield Static("  cip sync              - Incremental index update")
         yield Static("")
-        yield Button("Back", id="help_back")
+        yield Button("Back to Dashboard", id="help_back")
+        yield Footer()
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
         if event.button.id == "help_back":
             self.app.pop_screen()
+    
+    def action_back(self) -> None:
+        """Go back to previous screen."""
+        self.app.pop_screen()
 
 
 

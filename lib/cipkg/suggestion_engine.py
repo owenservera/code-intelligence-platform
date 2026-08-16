@@ -11,6 +11,8 @@ from datetime import datetime
 from enum import Enum
 import os
 
+from .base import log_swallowed
+
 
 class Priority(Enum):
     """Suggestion priority levels."""
@@ -656,7 +658,7 @@ class SuggestionEngine:
                 suggestions.extend(analyzer_suggestions)
             except Exception as e:
                 # Log error but continue with other analyzers
-                print(f"Warning: Analyzer {analyzer.__class__.__name__} failed: {e}")
+                log_swallowed(f"suggestion_engine.{analyzer.__class__.__name__}.analyze", e)
         
         # Rank and filter suggestions
         ranked = self.ranking_engine.rank(suggestions)

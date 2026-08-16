@@ -2,6 +2,12 @@
 .cip/data/
 .cip/config.toml
 .cip/ontology.json
+# Runtime memory/state DBs (never commit binary session state)
+.cip/*.db
+
+# Generated reports / coverage output
+coverage.xml
+snapshot_report.html
 
 # Python
 __pycache__/

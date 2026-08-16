@@ -222,11 +222,34 @@ def handle_export_command(root, args):
     _out(export(root, getattr(args, 'format', 'json'), getattr(args, 'out', None)))
 
 def handle_doctor_command(root, args):
-    cmd_doctor(root)
+    """S5: first-class self-diagnostic command.
+
+    `cip doctor` (no flag) = full system report (Doctor `core cmd` + info
+    table). `cip doctor --static/--config/--runtime` = one scope only.
+    """
+    from . import doctor as doctor_mod
+    if getattr(args, "static", False):
+        scope = "static"
+    elif getattr(args, "config", False):
+        scope = "config"
+    elif getattr(args, "runtime", False):
+        scope = "runtime"
+    else:
+        scope = None
+    _out(doctor_mod.doctor(root, scope))
+    if scope is None:
+        cmd_doctor(root)
 
 def handle_serve_command(root, args):
     from .server import serve
     serve(root, getattr(args, 'port', None))
+
+def handle_dashboard_web_command(root, args):
+    """Handle 'cip dashboard-web' command."""
+    from .web_server import start_web_server
+    port = getattr(args, 'port', 8090)
+    host = getattr(args, 'host', 'localhost')
+    start_web_server(root, port, host)
 
 def handle_mcp_command(root, args):
     from .server import mcp_main
@@ -553,7 +576,10 @@ def setup_argument_parser():
     ex = sub.add_parser("export")
     ex.add_argument("--format", default="json", choices=["json", "lsif", "markdown"])
     ex.add_argument("--out")
-    sub.add_parser("doctor")
+    doc = sub.add_parser("doctor", help="system health + self-consistency checks")
+    doc.add_argument("--static", action="store_true", help="CODE-* static scans (S1 swallow + S2 lint)")
+    doc.add_argument("--config", action="store_true", help="CONFIG-* self-consistency skeleton")
+    doc.add_argument("--runtime", action="store_true", help="runtime / API-contract probes")
     vp = sub.add_parser("serve")
     vp.add_argument("--port", type=int)
     sub.add_parser("mcp")
@@ -582,6 +608,10 @@ def setup_argument_parser():
     sub.add_parser("gate", help="quality gate: exit 1 on critical findings")
     dp2 = sub.add_parser("dashboard", help="local visualization")
     dp2.add_argument("--port", type=int, default=8790)
+
+    dw = sub.add_parser("dashboard-web", help="interactive web dashboard with WebSocket")
+    dw.add_argument("--port", type=int, default=8090)
+    dw.add_argument("--host", type=str, default="localhost")
 
     # v1.3 gatekeeper
     ad = sub.add_parser("admission", help="audit what is indexed and why")
@@ -695,6 +725,7 @@ def dispatch_command(root, args):
         "verify-index": handle_verify_command,
         "vacuum": handle_vacuum_command,
         "embed": handle_embed_command,
+        "dashboard-web": handle_dashboard_web_command,
     }
     
     handler = handlers.get(args.cmd)

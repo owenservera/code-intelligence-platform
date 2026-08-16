@@ -1,7 +1,7 @@
 """Intelligent file admission: WHAT to index and HOW MUCH intelligence to spend.
 Truth priority: git ls-files > .gitignore parse > heuristics > config overrides."""
 import os, re, subprocess
-from .base import repo_root, load_config, DEFAULT_EXCLUDES
+from .base import repo_root, load_config, DEFAULT_EXCLUDES, BACKUP_DIR_PREFIXES
 
 HARD_DIRS = DEFAULT_EXCLUDES
 DOC_EXTS = {".md", ".mdx", ".rst", ".txt", ".adoc"}
@@ -110,6 +110,17 @@ def classify(rel):
         return "code", "source"
     return "pathonly", "unknown type"
 
+def _is_backup_segment(name):
+    """True when this dir/file name marks a backup/duplicate/generated tree.
+
+    Segment-level, so a *filename* that merely contains "backup_" (e.g.
+    ``test_f42_backup_pollution.py``) never matches. Agrees with
+    `tests/detectors/s6_index_integrity._is_backup_rel` (F-42).
+    """
+    return (name in ("backups", "htmlcov")
+            or name.startswith(BACKUP_DIR_PREFIXES)
+            or name.endswith((".bak", ".orig")))
+
 def _decide(rel, ap, size, cfg, tracked, ign):
     include = cfg["index"].get("include", [])
     exclude = cfg["index"].get("exclude", [])
@@ -119,6 +130,11 @@ def _decide(rel, ap, size, cfg, tracked, ign):
         return "index", tier, "explicit include"
     if any(m in rel for m in exclude):
         return "skip", "-", "config exclude"
+    # F-42: backup/duplicate trees are never indexable, even when git-tracked
+    # and even when `index.exclude` is empty. Segment-aware so `explain()` here
+    # tells the truth for backup files that `_scan` no longer walks.
+    if any(_is_backup_segment(seg) for seg in rel.split("/")):
+        return "skip", "-", "backup/duplicate tree"
     if tracked is not None:
         if rel not in tracked and not _looks_new_source(rel, ap):
             return "skip", "-", "not tracked by git"
@@ -153,8 +169,11 @@ def _scan(root):
             with os.scandir(dirpath) as it:
                 for e in it:
                     if e.is_dir(follow_symlinks=False):
-                        if e.name not in HARD_DIRS:
-                            stack.append(e.path)
+                        # Default-junk/backup trees never reach the stack (avoids
+                        # per-file stat + classify cost on thousands of copies).
+                        if e.name in HARD_DIRS or _is_backup_segment(e.name):
+                            continue
+                        stack.append(e.path)
                     elif e.is_file(follow_symlinks=False):
                         rel = os.path.relpath(e.path, root).replace(os.sep, "/")
                         try:

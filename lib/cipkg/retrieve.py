@@ -126,6 +126,39 @@ def _external_search(root, cfg, query, k):
         return None
 
 def search(root=None, query="", k=10):
+    """Perform hybrid search combining lexical and semantic search.
+    
+    This function combines traditional keyword-based search with
+    semantic vector search to provide the most relevant results.
+    
+    Args:
+        root: Repository root path (default: auto-detect)
+        query: Search query string
+        k: Maximum number of results to return (default: 10)
+    
+    Returns:
+        List of search results, each containing:
+        - chunk: Chunk ID
+        - path: File path
+        - lines: [start_line, end_line]
+        - symbol: Associated symbol ID (if any)
+        - score: Relevance score (0.0 to 1.0)
+        - matched: List of search backends that matched
+        - snippet: Code text snippet
+        - tier: File tier (code, test, config, etc.)
+    
+    Raises:
+        ValueError: If query is empty
+    
+    Example:
+        >>> results = search('/path/to/repo', 'authentication function')
+        >>> for result in results:
+        ...     print(f"{result['path']}:{result['lines']} - {result['score']:.2f}")
+    
+    Note:
+        Semantic search requires an embedder to be configured.
+        Falls back to lexical-only search if embedder is unavailable.
+    """
     root = root or repo_root(); cfg = load_config(root); con = connect(root)
     
     # Check if external search is configured
@@ -156,6 +189,29 @@ def edge_counts(con, sid):
     return {"out": {r["kind"]: r["c"] for r in out}, "in": {r["kind"]: r["c"] for r in inc}}
 
 def find_symbol(root=None, name="", limit=20):
+    """Find symbol definitions with relationship counts.
+    
+    Args:
+        root: Repository root path (default: auto-detect)
+        name: Symbol name to search for (supports partial matching)
+        limit: Maximum number of results (default: 20)
+    
+    Returns:
+        List of symbol dictionaries containing:
+        - id: Symbol ID
+        - name: Symbol name
+        - kind: Symbol kind (function, class, method, etc.)
+        - path: File path
+        - start_line: Starting line number
+        - end_line: Ending line number
+        - signature: Symbol signature
+        - counts: Dictionary with 'in' and 'out' edge counts
+    
+    Example:
+        >>> symbols = find_symbol('/path/to/repo', 'hello_world')
+        >>> for sym in symbols:
+        ...     print(f"{sym['name']} ({sym['kind']}) at {sym['path']}")
+    """
     root = root or repo_root(); con = connect(root)
     rows = con.execute("SELECT * FROM symbols WHERE name=? COLLATE NOCASE LIMIT ?",
                        (name, limit)).fetchall()
@@ -170,6 +226,24 @@ def find_symbol(root=None, name="", limit=20):
     return out
 
 def graph(root=None, sid=None, direction="both", depth=1):
+    """Traverse relationships around a symbol or file.
+    
+    Args:
+        root: Repository root path (default: auto-detect)
+        sid: Symbol ID to start traversal from (required)
+        direction: Traversal direction - 'in', 'out', or 'both' (default: 'both')
+        depth: Maximum traversal depth (1-3, default: 1)
+    
+    Returns:
+        Dictionary containing:
+        - root: Starting symbol ID
+        - nodes: List of connected node IDs
+        - edges: List of edge dictionaries with 'src', 'dst', 'kind'
+    
+    Example:
+        >>> result = graph('/path/to/repo', 'symbol_123', direction='both', depth=2)
+        >>> print(f"Found {len(result['nodes'])} connected nodes")
+    """
     root = root or repo_root(); con = connect(root)
     if not sid: return {"error": "id required"}
     depth = max(1, min(int(depth), 3))
@@ -191,6 +265,28 @@ def graph(root=None, sid=None, direction="both", depth=1):
     return {"root": sid, "nodes": sorted(seen), "edges": edges[:400]}
 
 def context(root=None, query=None, symbol=None, budget=None):
+    """Token-budgeted context pack: code + summary + relations + tests + failures.
+    
+    Args:
+        root: Repository root path (default: auto-detect)
+        query: Search query to find relevant context (optional)
+        symbol: Symbol ID or name to get context for (optional)
+        budget: Maximum token budget (default: from config)
+    
+    Returns:
+        Dictionary containing:
+        - seed: Starting symbol ID (if any)
+        - budget_tokens: Maximum token budget
+        - used_tokens: Tokens actually used
+        - tokens_remaining: Tokens remaining in budget
+        - budget_utilization: Percentage of budget used
+        - sections: List of context sections with 'why', 'meta', 'text'
+        - next_ops: Suggested follow-up operations
+    
+    Example:
+        >>> ctx = context('/path/to/repo', symbol='hello_world')
+        >>> print(f"Used {ctx['used_tokens']} of {ctx['budget_tokens']} tokens")
+    """
     root = root or repo_root(); cfg = load_config(root); con = connect(root)
     budget = int(budget or cfg["retrieval"]["context_budget_tokens"])
     sections, next_ops, seed = [], [], None
@@ -276,6 +372,24 @@ def context(root=None, query=None, symbol=None, budget=None):
             "next_ops": next_ops[:6]}
 
 def history(root=None, path="", n=8):
+    """Get git history for a path.
+    
+    Args:
+        root: Repository root path (default: auto-detect)
+        path: File path to get history for (required)
+        n: Number of commits to return (default: 8)
+    
+    Returns:
+        Dictionary containing:
+        - path: File path
+        - commits: List of commit strings (hash, date, author, message)
+        - note: Error message if git unavailable (optional)
+    
+    Example:
+        >>> hist = history('/path/to/repo', 'src/main.py')
+        >>> for commit in hist['commits']:
+        ...     print(commit)
+    """
     root = root or repo_root()
     try:
         out = subprocess.run(
