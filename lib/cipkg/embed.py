@@ -52,6 +52,26 @@ def service_health(port, timeout=0.5):
         return None
 
 
+def service_port(cfg: dict | None = None) -> int:
+    """Canonical embed-daemon/service port (CORE-10 single truth).
+
+    Resolution: `[embed].service_port` → `[serve].port` → `8787`.
+    The legacy `[daemon].port` key (8765) is intentionally NOT part of this
+    resolution: it is the known-drift evidence the doctor CONFIG-PORT-MISMATCH
+    detector fires on, so every runtime surface that forwards the effective
+    port must resolve through here instead of re-reading a stale literal.
+    """
+    if cfg is None:
+        try:
+            from .base import load_config, repo_root
+            cfg = load_config(repo_root())
+        except Exception:
+            cfg = {}
+    ecfg = cfg.get("embed", {}) or {}
+    scfg = cfg.get("serve", {}) or {}
+    return int(ecfg.get("service_port", scfg.get("port", 8787)))
+
+
 def find_daemon_port(root=None):
     """Find daemon port from cip_dir/port file, then check health."""
     from .base import data_dir, load_config
@@ -59,7 +79,7 @@ def find_daemon_port(root=None):
         cfg = load_config(root)
     except Exception:
         cfg = {}
-    port = int(cfg.get("serve", {}).get("port", 8787))
+    port = service_port(cfg)
 
     # check port file first (authoritative)
     if root:
@@ -161,10 +181,16 @@ def get_embedder(cfg, root=None):
     """
     Priority: warm daemon -> auto-start daemon -> hashing (offline) -> local (with warning).
     Always tells the user what's happening.
+
+    Auto-manage hook (SPEC-03 §6.3, web opt-in): when `[web].auto_manage_daemon`
+    is true AND no daemon is warm, start one (detached subprocess) and bounded-poll
+    /embed/health until warm (60s) *then* proceed to hashing/local. This never
+    changes default behavior — explicit-start stays the default; auto-manage is a
+    web-layer opt-in set by the daemon panel toggle.
     """
     ecfg = cfg.get("embed", {})
     backend = ecfg.get("backend", "auto")
-    port = int(ecfg.get("service_port", cfg.get("serve", {}).get("port", 8787)))
+    port = service_port(cfg)
 
     # 1. try daemon (instant, zero-cost)
     if backend in ("auto", "service"):
@@ -172,6 +198,25 @@ def get_embedder(cfg, root=None):
         if h and h.get("warm"):
             return _cached(("service", port), lambda: RemoteEmbedder(
                 port, name=h.get("model"), dim=int(h.get("dim") or 384)))
+
+    # 1b. auto-manage hook (SPEC-03 §6.3): web opt-in only, bounded warm-wait.
+    #     Never triggers unless [web].auto_manage_daemon is explicitly enabled.
+    if (cfg.get("web", {}).get("auto_manage_daemon") and backend in ("auto", "service")
+            and backend != "hashing"):
+        from .daemon import start_daemon
+        try:
+            if start_daemon(root, port=port):
+                deadline = time.time() + 60          # bounded (SPEC-03 §6.3)
+                while time.time() < deadline:
+                    h = service_health(port, timeout=1.0)
+                    if h and h.get("warm"):
+                        print("cip: embed daemon warm (auto-managed)")
+                        return _cached(("service", port), lambda: RemoteEmbedder(
+                            port, name=h.get("model"), dim=int(h.get("dim") or 384)))
+                    time.sleep(1.0)
+        except Exception as e:
+            print(f"cip: auto-manage daemon failed: {e}")
+        # fall through to hashing/local below — bounded wait never blocks forever
 
     # 2. auto-start daemon if configured
     if backend == "service" or (backend == "auto" and ecfg.get("autostart", True)):
@@ -204,7 +249,7 @@ def get_embedder_with_feedback(cfg, root=None):
     """Same as get_embedder but prints which path was taken."""
     ecfg = cfg.get("embed", {})
     backend = ecfg.get("backend", "auto")
-    port = int(ecfg.get("service_port", cfg.get("serve", {}).get("port", 8787)))
+    port = service_port(cfg)
 
     if backend in ("auto", "service"):
         h = service_health(port)

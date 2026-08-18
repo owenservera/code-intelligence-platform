@@ -148,12 +148,7 @@ cache_ttl = 3600   # Cache TTL in seconds
 
 [analysis]
 # Health score weights
-health_weights = {
-    "coverage" = 0.3,
-    "quality" = 0.3,
-    "recency" = 0.2,
-    "complexity" = 0.2
-}
+health_weights = {"coverage" = 0.3, "quality" = 0.3, "recency" = 0.2, "complexity" = 0.2}
 
 # Audit settings
 audit_refresh_interval = 3600  # 1 hour
@@ -222,3 +217,9 @@ event_days = 30
 
 [audit]
 ignore_rules = []        # e.g. ["QA-CONSOLE", "QA-ANY"]
+
+[web]
+# Web Console (FastAPI) settings
+host = "localhost"
+port = 8090
+open_browser = true

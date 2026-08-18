@@ -440,6 +440,15 @@ def _sync_body(root=None, full=False, do_embed=True, progress=None):
     con.execute("INSERT INTO events(ts,kind,payload) VALUES(?,?,?)",
                 (time.time(), "sync", str(stats)))
     con.commit()
+    # SPEC-04 §6.1: durable job snapshot (post-commit, off the hot path).
+    # sync computes counts only; audit/consolidate jobs fill health/components.
+    from .store import write_snapshot
+    write_snapshot(con, "sync", health=None,
+                   counts={"files": stats.get("files"), "symbols": stats.get("symbols"),
+                           "chunks": stats.get("chunks"), "edges": stats.get("edges"),
+                           "vectors": stats.get("vectors")},
+                   meta={"dirty": stats.get("dirty"), "deleted": stats.get("deleted"),
+                         "embedded": stats.get("embedded"), "ms": stats.get("ms")})
     return stats
 
 def sync(root=None, full=False, do_embed=True, progress=None):

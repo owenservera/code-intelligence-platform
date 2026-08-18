@@ -249,11 +249,48 @@ def handle_serve_command(root, args):
     serve(root, getattr(args, 'port', None))
 
 def handle_dashboard_web_command(root, args):
-    """Handle 'cip dashboard-web' command."""
+    """Handle 'cip dashboard-web' command (legacy)."""
     from .web_server import start_web_server
     port = getattr(args, 'port', 8090)
     host = getattr(args, 'host', 'localhost')
     start_web_server(root, port, host)
+
+def handle_web_command(root, args):
+    """Handle 'cip web' — new FastAPI Web Console."""
+    # GAP-04: --root / --project preselect a project before the bridge imports,
+    # so the bridge's CIP_WEB_ROOT bootstrap (:59-62) selects + registers it.
+    cli_root = getattr(args, 'root', None)
+    cli_project = getattr(args, 'project', None)
+    if cli_project:
+        from .project_registry import get_registry, ProjectRegistry
+        entry = get_registry().get(ProjectRegistry.project_id(cli_project))
+        if entry is None:
+            print(f"error: unknown project in registry: {cli_project}")
+            print("  list projects with: cip projects (see docs/dev/upgrade-plan/)")
+            return 1
+        cli_root = entry["root"]
+    if cli_root:
+        cli_root = os.path.abspath(os.path.normcase(cli_root))
+        if not os.path.isdir(cli_root):
+            print(f"error: selected folder does not exist: {cli_root}")
+            return 1
+        os.environ["CIP_WEB_ROOT"] = cli_root
+        print(f"  -> preselected project: {cli_root}")
+
+    from .web_bridge import app as web_app
+    import uvicorn
+    port = getattr(args, 'port', None) or 8090
+    host = getattr(args, 'host', 'localhost') or "localhost"
+    open_browser = getattr(args, 'open_browser', True)
+    if open_browser:
+        import threading, time as _t, webbrowser
+        def _open():
+            _t.sleep(1.5)
+            webbrowser.open(f"http://{host}:{port}")
+        threading.Thread(target=_open, daemon=True).start()
+    print(f"🌐 CIP Console: http://{host}:{port}")
+    print(f"   Press Ctrl+C to stop")
+    uvicorn.run(web_app, host=host, port=port, log_level="info")
 
 def handle_mcp_command(root, args):
     from .server import mcp_stdio
@@ -401,55 +438,9 @@ def handle_embed_ping_command(root, args):
 # ── commands ─────────────────────────────────────────────────────────────────
 
 def cmd_init(root):
-    from .base import load_config
-    from . import detect, indexer
-    from .store import connect, set_meta
-    _desc("Setting up CIP for this project (one-time setup)")
-    cipd = os.path.join(root, ".cip")
-    os.makedirs(os.path.join(cipd, "data"), exist_ok=True)
-    
-    # Copy AGENTS.md template if it doesn't exist
-    agents_src = os.path.join(os.path.dirname(__file__), "templates", "AGENTS.md")
-    agents_dst = os.path.join(root, "AGENTS.md")
-    if os.path.exists(agents_src) and not os.path.exists(agents_dst):
-        shutil.copy(agents_src, agents_dst)
-        print("created %s" % agents_dst)
-    
-    _install_hooks(root)
-    _ensure_gitignore(root)
-    
-    # Install agent hooks for common agent types
-    _desc("Installing agent integration hooks")
-    for agent_type in ["claude-code", "opencode"]:
-        result = install_agent_hooks(root, agent_type)
-        if result.get("ok"):
-            print("installed %s hooks: %s" % (agent_type, result.get("config_path")))
-        else:
-            print("skipped %s hooks: %s" % (agent_type, result.get("error", "unknown")))
-    cfg = load_config(root)
-    _desc("Detecting project type (languages, frameworks, stacks)")
-    det = detect.detect(root, cfg)
-    con = connect(root)
-    set_meta(con, "detection", json.dumps(det))
-    con.commit()
-    print("detected: primary=%s stacks=%s langs=%s" % (
-        det["primary"], det["stacks"], det["languages"]))
-    _desc("Scanning every file to build the code map (symbols, imports, edges)")
-    stats = indexer.sync(root, full=True, do_embed=False, progress=_progress)
-    print("structure: %d files, %d symbols, %d chunks, %d edges (%dms)" % (
-        stats["files"], stats["symbols"], stats["chunks"], stats["edges"], stats["ms"]))
-    _desc("Indexing git history for change-tracking")
-    try:
-        from . import gitindex
-        g = gitindex.git_index(root, depth=int(cfg["git"]["depth"]))
-        print("git index: %s" % g)
-    except Exception as e:
-        print("git index skipped: %s" % e)
-    print("setup complete. Next steps:")
-    print("  cip sync      -- update the index (run after any code change)")
-    print("  cip daemon    -- start background watcher + HTTP server")
-    print("  cip embed-ping -- test embedding latency")
-    print("  cip doctor    -- check system health")
+    # PLAN-04 / SPEC-19 §6.3: the web console and CLI share this exact init path.
+    from .init_flow import init_project
+    return init_project(root)
 
 def cmd_doctor(root):
     from .base import load_config, data_dir
@@ -581,11 +572,11 @@ def cmd_embed_ping(root, count):
     print("  avg=%dms  min=%dms  max=%dms  (warm, no model reload)" % (avg, mn, mx))
 
 def cmd_embedder(root):
-    from .embed import get_embedder_with_feedback, service_health
+    from .embed import get_embedder_with_feedback, service_health, service_port
     from .base import load_config
     _desc("Embedding engine status")
     cfg = load_config(root)
-    port = int(cfg.get("serve", {}).get("port", 8787))
+    port = service_port(cfg)
     h = service_health(port)
     if h:
         print("daemon :%d  ->  WARM  model=%s  uptime=%ss" % (
@@ -699,9 +690,17 @@ def setup_argument_parser():
     dp2 = sub.add_parser("dashboard", help="local visualization")
     dp2.add_argument("--port", type=int, default=8790)
 
-    dw = sub.add_parser("dashboard-web", help="interactive web dashboard with WebSocket")
+    dw = sub.add_parser("dashboard-web", help="interactive web dashboard with WebSocket (legacy)")
     dw.add_argument("--port", type=int, default=8090)
     dw.add_argument("--host", type=str, default="localhost")
+
+    wb = sub.add_parser("web", help="Web Console (FastAPI + React SPA)")
+    wb.add_argument("--port", type=int, default=8090)
+    wb.add_argument("--host", type=str, default="localhost")
+    wb.add_argument("--no-browser", dest="open_browser", action="store_false", default=True)
+    # GAP-04: preselect the active project at boot (works from a non-CIP cwd).
+    wb.add_argument("--project", help="registry project id (normalized root) to select")
+    wb.add_argument("--root", help="folder to register + select (auto-registers)")
 
     # v1.3 gatekeeper
     ad = sub.add_parser("admission", help="audit what is indexed and why")
@@ -816,6 +815,7 @@ def dispatch_command(root, args):
         "vacuum": handle_vacuum_command,
         "embed": handle_embed_command,
         "dashboard-web": handle_dashboard_web_command,
+        "web": handle_web_command,
         # v2 gap-fillers (F-16: registered but were never dispatched)
         "coverage": handle_coverage_command,
         "dead": handle_dead_command,

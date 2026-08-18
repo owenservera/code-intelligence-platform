@@ -1,0 +1,27 @@
+# S2 static-lint gate (CIP campaign Phase S) — detect-first CI gate.
+# RUNBOOK §4, TRACKER Phase S row S2. Runs the regression-locked detector tests
+# (RECALL on broken evidence + PRECISION on clean_ref). pyflakes must be
+# installed as a dev dependency (see requirements-dev in AGENTS.md workflow).
+name: cip-static-lint-gate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  static-lint-gate:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install gate deps
+        run: python -m pip install --quiet pyflakes pytest
+      - name: S2 detector tests (RECALL + PRECISION)
+        run: python -m pytest tests/detectors/s2_static_lint_gate_test.py -q
+      - name: S2 precision sweep (must be silent)
+        run: python -m pyflakes tests/data/clean_ref

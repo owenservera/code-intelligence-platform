@@ -115,7 +115,7 @@ def _parse_toml_naive(path):
                 out.setdefault(section or "_", {})[k] = _coerce(v)
     return out
 
-def load_config(root):
+def load_config(root, warnings=None):
     import copy
     cfg = copy.deepcopy(DEFAULT_CONFIG)
     
@@ -151,9 +151,10 @@ def load_config(root):
             elif isinstance(kv, list):
                 cfg.setdefault(section, {}).setdefault(section, []).extend(kv)
     except Exception as e:
-        # F-11/CORE-41: repo-settings profile load failed — never swallow silently.
-        # Full resolution fix lands in Phase 2 (F-11); until then, surface for diagnostics.
+        # F-11/CORE-41: repo-settings profile load failed — surface instead of swallowing.
         log_swallowed("base.load_config.repo_settings", e)
+        if warnings is not None:
+            warnings.append("repo-settings profile load failed: %s" % e)
         # Fallback to basic config if detection fails
     
     # Load local repo config for overrides

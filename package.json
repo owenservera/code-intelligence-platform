@@ -1,0 +1,11 @@
+{
+  "name": "cip-console",
+  "private": true,
+  "version": "2.1.0",
+  "description": "CIP Web Console — single-command dev runner (backend + frontend hot reload)",
+  "scripts": {
+    "dev": "pwsh -NoProfile -ExecutionPolicy Bypass -File dev.ps1",
+    "dev:backend": "pwsh -NoProfile -ExecutionPolicy Bypass -Command \"$env:PYTHONPATH='lib'; python -m uvicorn cipkg.web_bridge:app --reload --reload-dir lib --host localhost --port 8090\"",
+    "dev:frontend": "bun run --cwd web dev"
+  }
+}

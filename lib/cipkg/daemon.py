@@ -105,6 +105,49 @@ def _cleanup(p):
         except OSError:
             pass
 
+# ── web-layer helpers (SPEC-03; CORE-12/CORE-13: run in a subprocess) ─────────
+
+def start_daemon(root=None, port=None, interval=1.0):
+    """Non-blocking daemon launcher for the web console.
+
+    Core `daemon()` is blocking and watch runs forever in-process (CORE-12).
+    The web-managed daemon must be a separate subprocess so `daemon_stop`'s
+    `taskkill /F /T` never kills the console process itself (CORE-13).
+    Returns the child Popen or None if already running / failed to spawn.
+    """
+    root = root or repo_root()
+    port = port or 8787
+    p = _paths(root)
+    if os.path.exists(p["lock"]):
+        pid = _read_pid(p["lock"])
+        if pid and _alive(pid):
+            print("daemon: already running (pid %d)" % pid)
+            return None
+    _cleanup(p)
+    env = dict(os.environ)
+    return subprocess.Popen(
+        [sys.executable, "-m", "cipkg.cli", "daemon",
+         "--port", str(port), "--interval", str(interval)],
+        cwd=root,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL)
+
+
+def read_log(root=None, lines=200):
+    """Read the last N lines of the daemon log (append-only free text)."""
+    root = root or repo_root()
+    p = _paths(root)
+    if not os.path.exists(p["log"]):
+        return []
+    try:
+        with open(p["log"], "r", encoding="utf-8", errors="replace") as f:
+            tail = f.readlines()
+        return tail[-lines:]
+    except OSError:
+        return []
+
+
 # ── main daemon ──────────────────────────────────────────────────────────────
 
 class _Tee:

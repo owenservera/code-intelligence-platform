@@ -266,7 +266,7 @@ class InitDetector:
                         break
         
         # Check for framework indicators
-        for framework, indicators in framework_files:
+        for framework, indicators in framework_files.items():
             for indicator in indicators:
                 if os.path.exists(os.path.join(self.root, indicator)):
                     frameworks.append(framework)

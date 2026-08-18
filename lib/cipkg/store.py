@@ -1,6 +1,6 @@
 """SQLite storage v1.0: + summaries, commits, commit_files, signals.
 CREATE IF NOT EXISTS makes old databases upgrade in place."""
-import os, sqlite3, threading
+import os, sqlite3, threading, time
 
 SCHEMA_VERSION = 4
 
@@ -56,6 +56,17 @@ CREATE INDEX IF NOT EXISTS idx_sig_kind ON signals(kind);
 
 CREATE TABLE IF NOT EXISTS symbol_calls(symbol_id TEXT, callee_name TEXT);
 CREATE INDEX IF NOT EXISTS idx_sc_sym ON symbol_calls(symbol_id);
+
+-- ---- SPEC-04 §6.1 / ISSUE-107: job snapshots (retained indefinitely) ----
+-- One row per completed sync/audit/consolidate job: the durable history for
+-- B1/B2/B3/D2 trends and full-history retention. NEVER pruned by the events
+-- vacuum sweep (CORE-17) — only a dedicated snapshot cleanup may touch it.
+-- health: overall score float; components: JSON {coverage,quality,freshness,...};
+-- counts: JSON {files,symbols,chunks,edges,vectors}; severity: JSON {critical,high,...}.
+CREATE TABLE IF NOT EXISTS snapshots(
+  ts REAL PRIMARY KEY, job TEXT,
+  health REAL, components TEXT, counts TEXT, severity TEXT, meta TEXT);
+CREATE INDEX IF NOT EXISTS idx_snap_job ON snapshots(job);
 """
 
 FTS_SCHEMA = """
@@ -227,3 +238,59 @@ def invalidate_vectors(con):
             _VEC_CACHE.pop(os.path.abspath(_db_path(con)), None)
     except Exception:
         pass
+
+
+# ── SPEC-04 §6.1: job snapshots (ISSUE-107, CORE-17) ──────────────────────────
+def write_snapshot(con, job, health=None, components=None, counts=None,
+                   severity=None, meta=None):
+    """Append one snapshot row for a completed job (sync/audit/consolidate).
+
+    Written off the hot path, once per job completion (SPEC-04 §7.1-8). Rows are
+    retained indefinitely and are EXEMPT from the events vacuum (CORE-17).
+    All JSON-able fields are stored as TEXT; callers may pass dicts or None.
+    """
+    import json as _json
+    def _ser(v):
+        return _json.dumps(v) if isinstance(v, dict) else (v or "")
+    con.execute(
+        "INSERT OR REPLACE INTO snapshots(ts, job, health, components, counts, severity, meta) "
+        "VALUES(?,?,?,?,?,?,?)",
+        (time.time(), job,
+         float(health) if health is not None else None,
+         _ser(components), _ser(counts), _ser(severity), _ser(meta)))
+    con.commit()
+
+
+def snapshot_series(con, job=None, limit=60):
+    """Most-recent snapshots, optionally filtered by job (oldest→newest)."""
+    sql = ("SELECT ts, job, health, components, counts, severity, meta "
+           "FROM snapshots")
+    args: list = []
+    if job:
+        sql += " WHERE job=?"
+        args.append(job)
+    sql += " ORDER BY ts DESC LIMIT ?"
+    args.append(int(limit))
+    rows = con.execute(sql, args).fetchall()
+    return [dict(r) for r in reversed(rows)]
+
+
+def prune_snapshots(con, keep=0):
+    """Delete snapshots beyond the retention policy.
+
+    Default `keep=0` retains everything (full-history, SPEC-04 §7.1-8). A
+    non-zero keep trims oldest rows of EACH job — the ONLY sanctioned way to
+    remove snapshot history (the events vacuum must never touch snapshots).
+    """
+    if not keep:
+        return 0
+    n = 0
+    jobs = [r["job"] for r in con.execute("SELECT DISTINCT job FROM snapshots")]
+    for j in jobs:
+        ids = [r["ts"] for r in con.execute(
+            "SELECT ts FROM snapshots WHERE job=? ORDER BY ts DESC LIMIT -1 OFFSET ?",
+            (j, int(keep)))]
+        for ts in ids:
+            n += con.execute("DELETE FROM snapshots WHERE job=? AND ts=?", (j, ts)).rowcount
+    con.commit()
+    return n

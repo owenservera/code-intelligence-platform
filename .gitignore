@@ -40,6 +40,11 @@ sync_global/backups/
 docs/
 !docs/development/
 !docs/development/UPGRADE_01_BUGS_AND_DESIGN_ISSUES.md
+!docs/dev/cip-bugfix-campaign/
+!docs/dev/upgrade-plan/
 
 tests/
 !tests/sync-system/
+!tests/detectors/
+!tests/terminal_dashboard/
+!tests/test_integration.py
