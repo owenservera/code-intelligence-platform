@@ -12,7 +12,10 @@ import {
   PackageOpen,
   Sparkles,
   FolderKanban,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
+import { useAppStore } from '@/stores/app'
 
 const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, label: 'Command Center' },
@@ -30,25 +33,51 @@ const NAV_ITEMS = [
 ]
 
 export function LeftNav() {
+  const leftnavCollapsed = useAppStore((s) => s.leftnavCollapsed)
+  const toggleLeftnavCollapsed = useAppStore((s) => s.toggleLeftnavCollapsed)
+
+  if (leftnavCollapsed) {
+    return (
+      <button
+        onClick={toggleLeftnavCollapsed}
+        className="w-8 border-r border-border bg-surface hover:bg-surface-raised flex items-center justify-center shrink-0 transition-colors"
+        aria-label="Show navigation"
+        title="Show navigation"
+      >
+        <ChevronRight className="w-4 h-4 text-text-muted" />
+      </button>
+    )
+  }
+
   return (
-    <nav className="w-52 border-r border-border bg-surface shrink-0 flex flex-col py-2 overflow-y-auto">
-      {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={to === '/'}
-          className={({ isActive }) =>
-            `flex items-center gap-2.5 px-3 py-2 mx-2 rounded-md text-xs transition-colors ${
-              isActive
-                ? 'bg-accent/15 text-accent font-medium'
-                : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
-            }`
-          }
-        >
-          <Icon className="w-4 h-4 shrink-0" />
-          <span>{label}</span>
-        </NavLink>
-      ))}
-    </nav>
+    <div className="flex shrink-0">
+      <nav className="w-52 border-r border-border bg-surface flex flex-col py-2 overflow-y-auto">
+        {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={to === '/'}
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 mx-2 rounded-md text-xs transition-colors ${
+                isActive
+                  ? 'bg-accent/15 text-accent font-medium'
+                  : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
+              }`
+            }
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            <span>{label}</span>
+          </NavLink>
+        ))}
+      </nav>
+      <button
+        onClick={toggleLeftnavCollapsed}
+        className="w-8 border-r border-border bg-surface hover:bg-surface-raised flex items-center justify-center shrink-0 transition-colors"
+        aria-label="Hide navigation"
+        title="Hide navigation"
+      >
+        <ChevronLeft className="w-4 h-4 text-text-muted" />
+      </button>
+    </div>
   )
 }

@@ -4,8 +4,9 @@ import { useSearchParams } from 'react-router-dom'
 import { fileApi, type FileBundle, type ImpactResult } from '@/lib/api'
 import {
   FileCode, Loader2, AlertTriangle, GitCommit, Target, Sparkles,
-  ShieldCheck, Network, History, Package, ChevronRight,
+  ShieldCheck, Network, History, Package, ChevronRight, ChevronLeft,
 } from 'lucide-react'
+import { useAppStore } from '@/stores/app'
 
 const FileEditor = lazy(() => import('@/components/file/FileEditor'))
 
@@ -19,6 +20,8 @@ const severityColor: Record<string, string> = {
 export function FileView() {
   const [params] = useSearchParams()
   const path = params.get('path') ?? ''
+  const intelligenceCollapsed = useAppStore((s) => s.intelligenceCollapsed)
+  const toggleIntelligenceCollapsed = useAppStore((s) => s.toggleIntelligenceCollapsed)
 
   const bundle = useQuery({
     queryKey: ['file', path],
@@ -69,16 +72,37 @@ export function FileView() {
       </div>
 
       {/* Right: intelligence rail */}
-      <div className="w-80 shrink-0 overflow-y-auto space-y-3 pr-1">
-        <SummarySection path={path} />
-        <SymbolsSection bundle={bundle.data} />
-        <RelationsSection path={path} />
-        <ImpactSection path={path} />
-        <FindingsSection bundle={bundle.data} />
-        <HistorySection path={path} />
-        <CoverageSection path={path} />
-        <EditContextSection path={path} />
-      </div>
+      {intelligenceCollapsed ? (
+        <button
+          onClick={toggleIntelligenceCollapsed}
+          className="w-8 shrink-0 bg-surface hover:bg-surface-raised flex items-center justify-center transition-colors rounded-lg border border-border"
+          aria-label="Show intelligence panel"
+          title="Show intelligence panel"
+        >
+          <ChevronLeft className="w-4 h-4 text-text-muted" />
+        </button>
+      ) : (
+        <div className="flex shrink-0">
+          <div className="w-80 overflow-y-auto space-y-3 pr-1">
+            <SummarySection path={path} />
+            <SymbolsSection bundle={bundle.data} />
+            <RelationsSection path={path} />
+            <ImpactSection path={path} />
+            <FindingsSection bundle={bundle.data} />
+            <HistorySection path={path} />
+            <CoverageSection path={path} />
+            <EditContextSection path={path} />
+          </div>
+          <button
+            onClick={toggleIntelligenceCollapsed}
+            className="w-8 shrink-0 bg-surface hover:bg-surface-raised flex items-center justify-center transition-colors rounded-lg border border-border"
+            aria-label="Hide intelligence panel"
+            title="Hide intelligence panel"
+          >
+            <ChevronRight className="w-4 h-4 text-text-muted" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

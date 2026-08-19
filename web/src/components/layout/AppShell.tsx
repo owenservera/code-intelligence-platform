@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Outlet } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { TopBar } from './TopBar'
 import { LeftNav } from './LeftNav'
 import { RepoExplorer } from '../file/RepoExplorer'
@@ -42,6 +43,8 @@ const EVENT_INVALIDATE: Partial<Record<JobEvent['type'], string[]>> = {
 export function AppShell() {
   useStatusPoll()
   const setCommandPaletteOpen = useAppStore((s) => s.setCommandPaletteOpen)
+  const explorerCollapsed = useAppStore((s) => s.explorerCollapsed)
+  const toggleExplorerCollapsed = useAppStore((s) => s.toggleExplorerCollapsed)
   const upsert = useJobsStore((s) => s.upsert)
   const seed = useJobsStore((s) => s.seed)
   const pushFeed = useEventsStore((s) => s.push)
@@ -109,7 +112,28 @@ export function AppShell() {
         {/* PLAN-08: collapsible repo explorer rail; keyed by project so the
             cache resets on project switch (PLAN-06). file.changed busts only
             the affected dir via RepoExplorer's epoch subscription (T8.4). */}
-        <RepoExplorer key={activeProject} />
+        {explorerCollapsed ? (
+          <button
+            onClick={toggleExplorerCollapsed}
+            className="w-8 border-r border-border bg-surface hover:bg-surface-raised flex items-center justify-center shrink-0 transition-colors"
+            aria-label="Show file explorer"
+            title="Show file explorer"
+          >
+            <ChevronRight className="w-4 h-4 text-text-muted" />
+          </button>
+        ) : (
+          <>
+            <RepoExplorer key={activeProject} />
+            <button
+              onClick={toggleExplorerCollapsed}
+              className="w-8 border-r border-border bg-surface hover:bg-surface-raised flex items-center justify-center shrink-0 transition-colors"
+              aria-label="Hide file explorer"
+              title="Hide file explorer"
+            >
+              <ChevronLeft className="w-4 h-4 text-text-muted" />
+            </button>
+          </>
+        )}
         <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>

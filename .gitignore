@@ -4,6 +4,8 @@
 .cip/ontology.json
 # Runtime memory/state DBs (never commit binary session state)
 .cip/*.db
+# Agent runtime state (hooks, learning data, editor/config JSON) — not source
+.cip/
 
 # Generated reports / coverage output
 coverage.xml

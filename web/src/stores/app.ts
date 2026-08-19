@@ -22,6 +22,9 @@ export interface ProjectSummary {
 }
 
 const ACTIVE_KEY = 'cip:activeProject'
+const EXPLORER_COLLAPSED_KEY = 'cip:explorerCollapsed'
+const LEFTNAV_COLLAPSED_KEY = 'cip:leftnavCollapsed'
+const INTELLIGENCE_COLLAPSED_KEY = 'cip:intelligenceCollapsed'
 
 export function getActiveProject(): string | null {
   return useAppStore.getState().activeProject
@@ -50,6 +53,13 @@ export interface AppState {
   fileChangeEpoch: number
   lastChangedPath: string | null
   bumpFileChange: (path?: string | null) => void
+  // ── Real estate: collapsible panels (P8) ────────────────────────────────
+  explorerCollapsed: boolean
+  toggleExplorerCollapsed: () => void
+  leftnavCollapsed: boolean
+  toggleLeftnavCollapsed: () => void
+  intelligenceCollapsed: boolean
+  toggleIntelligenceCollapsed: () => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -88,4 +98,25 @@ export const useAppStore = create<AppState>((set) => ({
   lastChangedPath: null,
   bumpFileChange: (path) =>
     set((prev) => ({ fileChangeEpoch: prev.fileChangeEpoch + 1, lastChangedPath: path ?? null })),
+  explorerCollapsed: localStorage.getItem(EXPLORER_COLLAPSED_KEY) === '1',
+  toggleExplorerCollapsed: () =>
+    set((prev) => {
+      const next = !prev.explorerCollapsed
+      localStorage.setItem(EXPLORER_COLLAPSED_KEY, next ? '1' : '0')
+      return { explorerCollapsed: next }
+    }),
+  leftnavCollapsed: localStorage.getItem(LEFTNAV_COLLAPSED_KEY) === '1',
+  toggleLeftnavCollapsed: () =>
+    set((prev) => {
+      const next = !prev.leftnavCollapsed
+      localStorage.setItem(LEFTNAV_COLLAPSED_KEY, next ? '1' : '0')
+      return { leftnavCollapsed: next }
+    }),
+  intelligenceCollapsed: localStorage.getItem(INTELLIGENCE_COLLAPSED_KEY) === '1',
+  toggleIntelligenceCollapsed: () =>
+    set((prev) => {
+      const next = !prev.intelligenceCollapsed
+      localStorage.setItem(INTELLIGENCE_COLLAPSED_KEY, next ? '1' : '0')
+      return { intelligenceCollapsed: next }
+    }),
 }))
