@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
@@ -17,6 +18,7 @@ loader.config({ monaco })
 export interface FileEditorProps {
   text: string
   path: string
+  targetLine?: number
 }
 
 const languageMap: Record<string, string> = {
@@ -40,13 +42,58 @@ function inferLanguage(path: string): string {
   return languageMap[ext] ?? 'plaintext'
 }
 
-export default function FileEditor({ text, path }: FileEditorProps) {
+export default function FileEditor({ text, path, targetLine }: FileEditorProps) {
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null)
+
+  const handleEditorDidMount = (editor: monaco.editor.IStandaloneCodeEditor) => {
+    editorRef.current = editor
+    if (targetLine && targetLine > 0) {
+      editor.revealLineInCenter(targetLine)
+      editor.setPosition({ lineNumber: targetLine, column: 1 })
+      decorationsRef.current = editor.createDecorationsCollection([
+        {
+          range: new monaco.Range(targetLine, 1, targetLine, 1),
+          options: {
+            isWholeLine: true,
+            className: 'bg-accent/15 border-l-2 border-accent',
+          },
+        },
+      ])
+    }
+  }
+
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    if (targetLine && targetLine > 0) {
+      editor.revealLineInCenter(targetLine)
+      editor.setPosition({ lineNumber: targetLine, column: 1 })
+      if (decorationsRef.current) {
+        decorationsRef.current.clear()
+      }
+      decorationsRef.current = editor.createDecorationsCollection([
+        {
+          range: new monaco.Range(targetLine, 1, targetLine, 1),
+          options: {
+            isWholeLine: true,
+            className: 'bg-accent/15 border-l-2 border-accent',
+          },
+        },
+      ])
+    } else if (decorationsRef.current) {
+      decorationsRef.current.clear()
+    }
+  }, [targetLine, text])
+
   return (
     <Editor
       height="100%"
       defaultLanguage={inferLanguage(path)}
       theme="vs-dark"
       value={text}
+      onMount={handleEditorDidMount}
       options={{
         readOnly: true,
         minimap: { enabled: false },

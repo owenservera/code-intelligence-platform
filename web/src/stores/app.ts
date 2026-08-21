@@ -34,8 +34,9 @@ export interface AppState {
   status: StatusCluster
   setStatus: (s: Partial<StatusCluster>) => void
   commandPaletteOpen: boolean
+  commandPaletteInitialQuery?: string
   toggleCommandPalette: () => void
-  setCommandPaletteOpen: (open: boolean) => void
+  setCommandPaletteOpen: (open: boolean, initialQuery?: string) => void
   // ── SPEC-19 §3/§6: active project + registry (P6) ────────────────────────
   activeProject: string | null
   projects: ProjectSummary[]
@@ -74,8 +75,9 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setStatus: (s) => set((prev) => ({ status: { ...prev.status, ...s } })),
   commandPaletteOpen: false,
-  toggleCommandPalette: () => set((prev) => ({ commandPaletteOpen: !prev.commandPaletteOpen })),
-  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+  commandPaletteInitialQuery: '',
+  toggleCommandPalette: () => set((prev) => ({ commandPaletteOpen: !prev.commandPaletteOpen, commandPaletteInitialQuery: '' })),
+  setCommandPaletteOpen: (open, initialQuery = '') => set({ commandPaletteOpen: open, commandPaletteInitialQuery: initialQuery }),
   activeProject: localStorage.getItem(ACTIVE_KEY),
   projects: [],
   setActiveProject: (id) => {

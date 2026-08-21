@@ -47,6 +47,14 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {}}},
     {"name": "models", "description": "Prisma model usage report incl. orphan detection.",
      "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "mdm_scan", "description": "Execute complete Master Data Model (L0-LA) multi-layer scan.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "mdm_report", "description": "Generate comprehensive MDM executive dossier and scorecard.",
+     "inputSchema": {"type": "object", "properties": {"markdown": {"type": "boolean"}}}},
+    {"name": "mdm_gaps", "description": "Scan silent IPC command and event wiring gaps.",
+     "inputSchema": {"type": "object", "properties": {}}},
+    {"name": "mdm_trace", "description": "Fetch step-by-step explainability trace for an MDM finding.",
+     "inputSchema": {"type": "object", "properties": {"finding_id": {"type": "string"}}, "required": ["finding_id"]}},
 ]
 
 def index_status(root):
@@ -157,6 +165,23 @@ def call_tool(root, cfg, name, args):
             res = {"routes": stack_nextjs.list_routes(root)}
         elif name == "models":
             res = stack_prisma.models_report(root)
+        elif name == "mdm_scan":
+            from .mdm_engine import run_mdm_extraction
+            from .mdm_synthesis import synthesize_la_findings
+            con = connect(root)
+            ext = run_mdm_extraction(root)
+            syn = synthesize_la_findings(con, root)
+            res = {"extraction": ext, "findings_count": len(syn)}
+        elif name == "mdm_report":
+            from .mdm_synthesis import generate_full_mdm_report, format_report_markdown
+            rep = generate_full_mdm_report(root)
+            res = {"report": rep, "markdown": format_report_markdown(rep) if args.get("markdown") else None}
+        elif name == "mdm_gaps":
+            from .mdm_engine import scan_l4_flow_and_wiring
+            res = scan_l4_flow_and_wiring(connect(root), root)
+        elif name == "mdm_trace":
+            from .mdm_schema import get_explainability_trace
+            res = {"finding_id": args.get("finding_id"), "trace": get_explainability_trace(connect(root), args.get("finding_id", ""))}
         elif name == "index_status":
             res = index_status(root)
         else:

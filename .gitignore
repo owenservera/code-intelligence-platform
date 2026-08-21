@@ -1,52 +1,41 @@
-# CIP index data (repo-specific)
-.cip/data/
-.cip/config.toml
-.cip/ontology.json
-# Runtime memory/state DBs (never commit binary session state)
-.cip/*.db
-# Agent runtime state (hooks, learning data, editor/config JSON) — not source
+# =============================================================================
+# CIP Code Intelligence Platform — .gitignore
+# =============================================================================
+
+# --- CIP Runtime & Index Data (Repo-Specific) ---
 .cip/
 
-# Generated reports / coverage output
+# --- Python & Test Caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.coverage
 coverage.xml
+htmlcov/
 snapshot_report.html
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-.pytest_cache/
-.coverage
-htmlcov/
+# --- Node / Web Console ---
+web/node_modules/
+web/dist/
+web/.vite/
+web/*.tsbuildinfo
+*.tsbuildinfo
 
-# IDE
+# --- IDE & OS ---
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Build artifacts
+# --- Build Artifacts ---
 dist/
 build/
 *.egg-info/
 
-# Sync system backups
+# --- Sync System Backups ---
 sync_global/backups/
-
-# Documentation and tests (most files ignored, but critical ones tracked)
-docs/
-!docs/development/
-!docs/development/UPGRADE_01_BUGS_AND_DESIGN_ISSUES.md
-!docs/dev/cip-bugfix-campaign/
-!docs/dev/upgrade-plan/
-
-tests/
-!tests/sync-system/
-!tests/detectors/
-!tests/terminal_dashboard/
-!tests/test_integration.py

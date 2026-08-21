@@ -248,6 +248,42 @@ def handle_serve_command(root, args):
     from .server import serve
     serve(root, getattr(args, 'port', None))
 
+def handle_mdm_scan_command(root, args):
+    """Run full Master Data Model (L0-LA) multi-layer extraction and synthesis."""
+    from .mdm_engine import run_mdm_extraction
+    from .mdm_synthesis import synthesize_la_findings
+    from .store import connect
+    con = connect(root)
+    ext_res = run_mdm_extraction(root)
+    la_res = synthesize_la_findings(con, root)
+    _out({"extraction": ext_res, "synthesized_findings_count": len(la_res)})
+
+def handle_mdm_report_command(root, args):
+    """Generate and display complete Master Data Model executive report."""
+    from .mdm_synthesis import generate_full_mdm_report, format_report_markdown
+    report = generate_full_mdm_report(root)
+    if getattr(args, "markdown", False):
+        print(format_report_markdown(report))
+    else:
+        _out(report)
+
+def handle_mdm_trace_command(root, args):
+    """Display step-by-step explainability trace for a specific finding."""
+    from .mdm_schema import get_explainability_trace
+    from .store import connect
+    con = connect(root)
+    fid = getattr(args, "finding_id", "")
+    trace = get_explainability_trace(con, fid)
+    _out({"finding_id": fid, "trace_steps": trace})
+
+def handle_mdm_gaps_command(root, args):
+    """Scan and list all detected L4 wiring gaps (IPC, events, routes)."""
+    from .mdm_engine import scan_l4_flow_and_wiring
+    from .store import connect
+    con = connect(root)
+    gaps = scan_l4_flow_and_wiring(con, root)
+    _out(gaps)
+
 def handle_dashboard_web_command(root, args):
     """Handle 'cip dashboard-web' command (legacy)."""
     from .web_server import start_web_server
@@ -770,6 +806,14 @@ def setup_argument_parser():
     vf = sub.add_parser("verify-index", help="check index vs disk drift"); vf.add_argument("--repair", action="store_true")
     vc = sub.add_parser("vacuum", help="compact DB, prune old events"); vc.add_argument("--days", type=int)
 
+    # Master Data Model (L0-LA) CLI surface
+    sub.add_parser("mdm-scan", help="run complete L0-LA extraction and synthesis")
+    mr = sub.add_parser("mdm-report", help="generate comprehensive MDM executive report")
+    mr.add_argument("--markdown", "-m", action="store_true", help="output report in markdown format")
+    mt = sub.add_parser("mdm-trace", help="display explainability trace for a finding")
+    mt.add_argument("finding_id", help="the finding ID to trace (e.g. LA-GAP-...)")
+    sub.add_parser("mdm-gaps", help="list detected L4 silent wiring gaps and traps")
+
     return p
 
 def dispatch_command(root, args):
@@ -837,6 +881,11 @@ def dispatch_command(root, args):
         "admission": handle_admission_command,
         "embedder": handle_embedder_command,
         "embed-ping": handle_embed_ping_command,
+        # Master Data Model (L0-LA) commands
+        "mdm-scan": handle_mdm_scan_command,
+        "mdm-report": handle_mdm_report_command,
+        "mdm-trace": handle_mdm_trace_command,
+        "mdm-gaps": handle_mdm_gaps_command,
     }
     
     handler = handlers.get(args.cmd)

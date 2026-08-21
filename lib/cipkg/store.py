@@ -2,7 +2,7 @@
 CREATE IF NOT EXISTS makes old databases upgrade in place."""
 import os, sqlite3, threading, time
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 CORE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -118,8 +118,18 @@ def connect(root):
     except sqlite3.OperationalError:
         pass
     _ensure_tokenizer(con)
+    _ensure_mdm(con)
     con.commit()
     return con
+
+def _ensure_mdm(con):
+    """Ensure MDM L0-LA tables exist and are migrated to v5."""
+    try:
+        from .mdm_schema import init_mdm_schema
+        init_mdm_schema(con)
+    except Exception as e:
+        from .base import log_swallowed
+        log_swallowed("store._ensure_mdm", e)
 
 def get_meta(con, key, default=None):
     r = con.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()

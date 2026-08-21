@@ -20,6 +20,8 @@ const severityColor: Record<string, string> = {
 export function FileView() {
   const [params] = useSearchParams()
   const path = params.get('path') ?? ''
+  const lineParam = params.get('line')
+  const targetLine = lineParam ? parseInt(lineParam, 10) : undefined
   const intelligenceCollapsed = useAppStore((s) => s.intelligenceCollapsed)
   const toggleIntelligenceCollapsed = useAppStore((s) => s.toggleIntelligenceCollapsed)
 
@@ -44,6 +46,11 @@ export function FileView() {
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border-subtle shrink-0">
           <FileCode className="w-4 h-4 text-accent shrink-0" />
           <span className="font-mono text-xs text-text-primary truncate">{path}</span>
+          {targetLine && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-accent/15 text-accent border border-accent/30">
+              line {targetLine}
+            </span>
+          )}
           {bundle.isLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted ml-auto" />}
           {bundle.data && (
             <span className="ml-auto text-[10px] text-text-muted font-mono shrink-0">
@@ -61,7 +68,7 @@ export function FileView() {
                 </div>
               }
             >
-              <FileEditor text={bundle.data.text} path={path} />
+              <FileEditor text={bundle.data.text} path={path} targetLine={targetLine} />
             </Suspense>
           ) : (
             <div className="h-full flex items-center justify-center text-text-muted text-sm">

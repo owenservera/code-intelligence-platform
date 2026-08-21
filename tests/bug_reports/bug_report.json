@@ -1,0 +1,51 @@
+{
+  "generated": "2026-08-21T17:34:02.463310",
+  "total_bugs": 5,
+  "bugs": [
+    {
+      "test_name": "tests/test_mdm_layers.py::test_l0_topology_extraction",
+      "error_type": "failed",
+      "error_message": "tests\\test_mdm_layers.py:126: in test_l0_topology_extraction\n    res = scan_l0_topology(con, str(mock_repo))\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    return any(m in p for m in cfg[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "traceback": "tests\\test_mdm_layers.py:126: in test_l0_topology_extraction\n    res = scan_l0_topology(con, str(mock_repo))\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    return any(m in p for m in cfg[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "severity": "HIGH",
+      "timestamp": "2026-08-21T17:32:45.902940",
+      "suggested_fix": "BUG: Dictionary key not found. Check that expected keys exist in dictionaries or add error handling for missing keys."
+    },
+    {
+      "test_name": "tests/test_mdm_layers.py::test_l2_symbols_and_deps",
+      "error_type": "failed",
+      "error_message": "tests\\test_mdm_layers.py:144: in test_l2_symbols_and_deps\n    res = scan_l2_symbols_and_deps(con, str(mock_repo))\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:252: in scan_l2_symbols_and_deps\n    cycle_res = gapfill.circular(root)\n                ^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\gapfill.py:168: in circular\n    con = _con(root)\n          ^^^^^^^^^^\nlib\\cipkg\\gapfill.py:20: in _con\n    return connect(root or repo_root())\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\store.py:112: in connect\n    con.execute(\"INSERT INTO meta(key,value) VALUES('schema_version',?) \"\nE   sqlite3.OperationalError: database is locked",
+      "traceback": "tests\\test_mdm_layers.py:144: in test_l2_symbols_and_deps\n    res = scan_l2_symbols_and_deps(con, str(mock_repo))\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:252: in scan_l2_symbols_and_deps\n    cycle_res = gapfill.circular(root)\n                ^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\gapfill.py:168: in circular\n    con = _con(root)\n          ^^^^^^^^^^\nlib\\cipkg\\gapfill.py:20: in _con\n    return connect(root or repo_root())\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\store.py:112: in connect\n    con.execute(\"INSERT INTO meta(key,value) VALUES('schema_version',?) \"\nE   sqlite3.OperationalError: database is locked",
+      "severity": "HIGH",
+      "timestamp": "2026-08-21T17:33:51.790851",
+      "suggested_fix": "BUG: failed. Review the error message and traceback for specific guidance."
+    },
+    {
+      "test_name": "tests/test_mdm_layers.py::test_la_synthesis_and_explainability_trace",
+      "error_type": "failed",
+      "error_message": "tests\\test_mdm_layers.py:167: in test_la_synthesis_and_explainability_trace\n    run_mdm_extraction(str(mock_repo))\nlib\\cipkg\\mdm_engine.py:827: in run_mdm_extraction\n    l0_res = scan_l0_topology(con, root)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    globs = (cfg or {}).get(\"index\", {}).get(\"test_globs\", DEFAULT_CONFIG[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "traceback": "tests\\test_mdm_layers.py:167: in test_la_synthesis_and_explainability_trace\n    run_mdm_extraction(str(mock_repo))\nlib\\cipkg\\mdm_engine.py:827: in run_mdm_extraction\n    l0_res = scan_l0_topology(con, root)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    globs = (cfg or {}).get(\"index\", {}).get(\"test_globs\", DEFAULT_CONFIG[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "severity": "HIGH",
+      "timestamp": "2026-08-21T17:33:52.187547",
+      "suggested_fix": "BUG: Dictionary key not found. Check that expected keys exist in dictionaries or add error handling for missing keys."
+    },
+    {
+      "test_name": "tests/test_mdm_layers.py::test_repo_scorecard",
+      "error_type": "failed",
+      "error_message": "tests\\test_mdm_layers.py:183: in test_repo_scorecard\n    run_mdm_extraction(str(mock_repo))\nlib\\cipkg\\mdm_engine.py:827: in run_mdm_extraction\n    l0_res = scan_l0_topology(con, root)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    globs = (cfg or {}).get(\"index\", {}).get(\"test_globs\", DEFAULT_CONFIG[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "traceback": "tests\\test_mdm_layers.py:183: in test_repo_scorecard\n    run_mdm_extraction(str(mock_repo))\nlib\\cipkg\\mdm_engine.py:827: in run_mdm_extraction\n    l0_res = scan_l0_topology(con, root)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    globs = (cfg or {}).get(\"index\", {}).get(\"test_globs\", DEFAULT_CONFIG[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "severity": "HIGH",
+      "timestamp": "2026-08-21T17:33:52.355863",
+      "suggested_fix": "BUG: Dictionary key not found. Check that expected keys exist in dictionaries or add error handling for missing keys."
+    },
+    {
+      "test_name": "tests/test_mdm_layers.py::test_full_report_generation_and_markdown",
+      "error_type": "failed",
+      "error_message": "tests\\test_mdm_layers.py:196: in test_full_report_generation_and_markdown\n    rep = generate_full_mdm_report(str(mock_repo))\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_synthesis.py:296: in generate_full_mdm_report\n    ext_res = run_mdm_extraction(root)\n              ^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:827: in run_mdm_extraction\n    l0_res = scan_l0_topology(con, root)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    globs = (cfg or {}).get(\"index\", {}).get(\"test_globs\", DEFAULT_CONFIG[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "traceback": "tests\\test_mdm_layers.py:196: in test_full_report_generation_and_markdown\n    rep = generate_full_mdm_report(str(mock_repo))\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_synthesis.py:296: in generate_full_mdm_report\n    ext_res = run_mdm_extraction(root)\n              ^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:827: in run_mdm_extraction\n    l0_res = scan_l0_topology(con, root)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\mdm_engine.py:108: in scan_l0_topology\n    is_orphan = not is_imported and not is_entry and f[\"tier\"] == \"code\" and not is_test_path(p, {})\n                                                                                 ^^^^^^^^^^^^^^^^^^^\nlib\\cipkg\\base.py:229: in is_test_path\n    globs = (cfg or {}).get(\"index\", {}).get(\"test_globs\", DEFAULT_CONFIG[\"index\"][\"test_globs\"])\n                               ^^^^^^^^^^^^\nE   KeyError: 'index'",
+      "severity": "HIGH",
+      "timestamp": "2026-08-21T17:33:52.548117",
+      "suggested_fix": "BUG: Dictionary key not found. Check that expected keys exist in dictionaries or add error handling for missing keys."
+    }
+  ]
+}

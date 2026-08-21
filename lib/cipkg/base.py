@@ -48,7 +48,7 @@ _toml_defaults = _load_default_toml()
 
 DEFAULT_CONFIG = {
     # Hardcoded fallback defaults (used if TOML files don't exist or are incomplete)
-    "index": {"max_file_kb": 512, "exclude": [],
+    "index": {"max_file_kb": 512, "exclude": [], "include": [],
               "test_globs": ["test_", "_test.", ".test.", ".spec.", "/tests/", "__tests__"]},
     "embed": {"backend": "auto", "model": "BAAI/bge-small-en-v1.5", "dim": 384,
               "service_port": 8787, "autostart": True},
@@ -62,7 +62,9 @@ DEFAULT_CONFIG = {
     # ---- v2 performance ----
     "perf": {"workers": 0},                 # 0=auto (cpu_count); 1=serial; N=explicit
     "maintain": {"event_days": 30},
-    # ---- repo profiles ----
+    # ---- stack and repo profiles ----
+    "stack": {"prisma_store_contracts": False, "tauri_enabled": False},
+    "language": {},
     # Core CIP has no default profiles - repos define their own in .cip/config.toml
     "profile": {}
 }
@@ -222,9 +224,10 @@ def iter_files(root, cfg):
         except OSError:
             continue
 
-def is_test_path(path, cfg):
+def is_test_path(path, cfg=None):
     p = path.lower()
-    return any(m in p for m in cfg["index"]["test_globs"])
+    globs = (cfg or {}).get("index", {}).get("test_globs", DEFAULT_CONFIG["index"]["test_globs"])
+    return any(m in p for m in globs)
 
 _IDENT_SPLIT = re.compile(r"[^0-9A-Za-z_$]+")
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")

@@ -8,11 +8,12 @@ import { useMemo, useState } from 'react'
 import {
   Loader2, Save, RotateCcw, RefreshCw, ShieldCheck, FileCog,
   SlidersHorizontal, Info, CheckCircle2, AlertTriangle, XCircle,
-  Server, Cpu, Wrench, Database, Network,
+  Server, Cpu, Wrench, Database, Network, Layers, FolderGit2,
 } from 'lucide-react'
 
 const CATEGORIES: { id: string; label: string; icon: React.ComponentType<{ className?: string }>; sections: string[] }[] = [
-  { id: 'index', label: 'Index', icon: Database, sections: ['index', 'summary', 'git'] },
+  { id: 'index', label: 'Index & Paths', icon: Database, sections: ['index', 'summary', 'git'] },
+  { id: 'stack', label: 'Stack & Repo Profile', icon: Layers, sections: ['stack', 'profile'] },
   { id: 'embedding', label: 'Embedding', icon: Cpu, sections: ['embed', 'vector', 'rerank'] },
   { id: 'retrieval', label: 'Retrieval', icon: Network, sections: ['retrieval'] },
   { id: 'memory', label: 'Memory', icon: Wrench, sections: ['memory', 'maintain'] },
@@ -364,13 +365,105 @@ export function SettingsView() {
             )
           })}
 
-          {/* Three-way bundle + env */}
-          <div className="grid md:grid-cols-2 gap-6">
+          {/* Repo Profile, Three-way bundle + env */}
+          <div className="grid md:grid-cols-3 gap-6">
+            <RepoProfilePanel bundle={bundle} />
             <ConfigFilePanel bundle={bundle} />
             <EnvPanel env={envQ.data?.env ?? {}} liveSchema={envQ.data?.live_schema_version ?? null} />
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+function RepoProfilePanel({ bundle }: { bundle: ConfigBundle }) {
+  const profile = bundle.detected_profile
+  const effective = bundle.effective
+  const indexInclude = (effective?.index?.include as string[]) || []
+  const indexExclude = (effective?.index?.exclude as string[]) || []
+  const stack = (effective?.stack as Record<string, unknown>) || {}
+
+  return (
+    <div className="rounded-xl border border-border bg-surface flex flex-col">
+      <div className="px-4 py-3 border-b border-border">
+        <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+          <FolderGit2 className="w-4 h-4 text-accent" />
+          Active Repo Profile
+        </h2>
+      </div>
+      <div className="p-4 space-y-3 text-xs flex-1">
+        <div className="flex items-center justify-between">
+          <span className="text-text-muted">Detected Type</span>
+          <span className="font-mono text-accent font-medium bg-accent/10 px-2 py-0.5 rounded border border-accent/20">
+            {profile?.repo_type ?? 'generic'}
+          </span>
+        </div>
+
+        {profile?.profile_dir && (
+          <div className="space-y-1">
+            <span className="text-text-muted block text-[11px]">Profile Source</span>
+            <span className="font-mono text-[10px] text-text-secondary bg-surface-raised px-2 py-1 rounded block truncate border border-border-subtle" title={profile.profile_dir}>
+              {profile.profile_dir}
+            </span>
+          </div>
+        )}
+
+        {profile?.profile_files && profile.profile_files.length > 0 && (
+          <div className="space-y-1">
+            <span className="text-text-muted block text-[11px]">Loaded TOMLs</span>
+            <div className="flex flex-wrap gap-1">
+              {profile.profile_files.map((f) => (
+                <span key={f} className="font-mono text-[10px] bg-surface-raised text-text-secondary px-1.5 py-0.5 rounded border border-border-subtle">
+                  {f}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {indexInclude.length > 0 && (
+          <div className="space-y-1 pt-1 border-t border-border-subtle">
+            <span className="text-text-muted block text-[11px]">Included Roots ({indexInclude.length})</span>
+            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+              {indexInclude.map((inc) => (
+                <span key={inc} className="font-mono text-[10px] bg-emerald-500/10 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                  +{inc}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {indexExclude.length > 0 && (
+          <div className="space-y-1 pt-1 border-t border-border-subtle">
+            <span className="text-text-muted block text-[11px]">Excluded Patterns ({indexExclude.length})</span>
+            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+              {indexExclude.slice(0, 6).map((exc) => (
+                <span key={exc} className="font-mono text-[10px] bg-surface-raised text-text-muted px-1.5 py-0.5 rounded border border-border-subtle">
+                  -{exc}
+                </span>
+              ))}
+              {indexExclude.length > 6 && (
+                <span className="text-[10px] text-text-muted self-center">+{indexExclude.length - 6} more</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {Object.keys(stack).length > 0 && (
+          <div className="space-y-1 pt-1 border-t border-border-subtle">
+            <span className="text-text-muted block text-[11px]">Stack Features</span>
+            <div className="flex flex-wrap gap-1">
+              {Object.entries(stack).map(([k, v]) => (
+                <span key={k} className="font-mono text-[10px] bg-surface-raised text-text-secondary px-1.5 py-0.5 rounded border border-border-subtle">
+                  {k}: {String(v)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

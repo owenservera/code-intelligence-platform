@@ -279,5 +279,20 @@ def _generate_recommendations(con, critical, high_priority, debt):
             "impact": f"Protect {item['dependents']} dependents",
             "effort": "small"
         })
-    
     return recommendations
+
+
+def mdm_analysis(root=None):
+    """Run full Master Data Model (L0-LA) multi-layer extraction and synthesis."""
+    from .mdm_synthesis import generate_full_mdm_report
+    return generate_full_mdm_report(root)
+
+
+def mdm_report(root=None, fmt="dict"):
+    """Get formatted Master Data Model report (dict or markdown)."""
+    from .mdm_synthesis import generate_full_mdm_report, format_report_markdown
+    report = generate_full_mdm_report(root)
+    if fmt == "markdown":
+        return format_report_markdown(report)
+    return report
+

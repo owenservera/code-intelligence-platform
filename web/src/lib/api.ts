@@ -786,10 +786,26 @@ export interface ConfigKeySchema {
   source: 'default' | 'config.toml' | 'profile'
 }
 
+export interface DetectedProfile {
+  repo_type: string
+  profile_dir: string | null
+  profile_files: string[]
+  profile_config: Record<string, unknown>
+  error?: string
+}
+
+export interface ProfileTemplate {
+  id: string
+  name: string
+  is_dir: boolean
+  files: string[]
+}
+
 export interface ConfigSchema {
   schema: Record<string, Record<string, ConfigKeySchema>>
   live_schema_version: number | null
   declared_schema_version: number | null
+  detected_profile?: DetectedProfile | null
 }
 
 export interface ConfigBundle {
@@ -797,6 +813,7 @@ export interface ConfigBundle {
   file: Record<string, Record<string, unknown>>
   defaults: Record<string, Record<string, unknown>>
   sources: Record<string, Record<string, 'default' | 'config.toml' | 'profile'>>
+  detected_profile?: DetectedProfile | null
 }
 
 export interface ConfigSaveResult {
@@ -824,6 +841,7 @@ export interface ConfigReloadResult {
 export const settingsApi = {
   schema: () => request<ConfigSchema>('/config/schema'),
   bundle: () => request<ConfigBundle>('/config/full'),
+  profiles: () => request<{ profiles: ProfileTemplate[] }>('/config/profiles'),
   validate: (updates: Record<string, Record<string, unknown>>) =>
     request<ConfigValidateResult>('/config/validate', {
       method: 'POST',
@@ -1050,3 +1068,84 @@ export const oracleApi = {
       body: JSON.stringify({ config: config ?? {} }),
     }),
 }
+
+// ── SPEC-Forensics: Deep Code Intelligence & AI Context ───────────────
+export interface ForensicRiskHotspot {
+  path: string
+  churn_score: number
+  symbols_count: number
+  tested_count: number
+  coverage_pct: number
+  risk_tier: 'critical' | 'high' | 'moderate'
+}
+
+export interface ForensicCycle {
+  symbols: string[]
+  size: number
+}
+
+export interface ForensicDeadStats {
+  count: number
+  candidates?: { id: string; name: string; kind: string; path: string; lines: [number, number]; confidence: string; reason: string }[]
+}
+
+export interface ForensicDimensionData {
+  count: number
+  findings: QualityFinding[]
+  hotspots?: ForensicRiskHotspot[]
+  cycles?: ForensicCycle[]
+  dead_stats?: ForensicDeadStats
+}
+
+export interface ForensicSummary {
+  total_findings: number
+  by_severity: Record<Severity, number>
+  dimensions: {
+    ghost_code: ForensicDimensionData
+    silent_traps: ForensicDimensionData
+    architecture: ForensicDimensionData
+    risk_matrix: ForensicDimensionData
+    secrets_env: ForensicDimensionData
+    quality: ForensicDimensionData
+  }
+}
+
+export interface ContextPackResponse {
+  context_pack: string
+  token_count: number
+  token_limit: number
+  target_path: string | null
+  symbol_id: string | null
+  caution_threshold: number
+  emergency_threshold: number
+}
+
+export interface ForensicDossier {
+  title: string
+  generated_at: string
+  root: string
+  health_score: number
+  findings_by_severity: Record<Severity, number>
+  dimensions_summary: {
+    ghost_code_issues: number
+    silent_traps_issues: number
+    architectural_violations: number
+    high_risk_hotspots: number
+    env_and_security_issues: number
+  }
+  critical_issues: unknown[]
+  recommendations: { priority: string; action: string; impact?: string; effort?: string }[]
+  risk_hotspots: ForensicRiskHotspot[]
+}
+
+export const forensicsApi = {
+  summary: () => request<ForensicSummary>('/forensics/summary'),
+  dossier: (format: 'json' | 'markdown' = 'json') =>
+    request<ForensicDossier>(`/forensics/dossier?format=${format}`),
+  contextPack: (params: { target_path?: string; symbol_id?: string; max_tokens?: number } = {}) =>
+    request<ContextPackResponse>('/forensics/context-pack', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }),
+}
+

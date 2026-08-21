@@ -43,7 +43,7 @@ export function CommandCenter() {
           {QUICK_ACTIONS.map(({ label, icon: Icon, command, color }) => (
             <button
               key={command}
-              onClick={() => setCommandPaletteOpen(true)}
+              onClick={() => setCommandPaletteOpen(true, command)}
               className="flex items-center gap-2.5 px-4 py-3 rounded-lg bg-surface border border-border-subtle
                          hover:border-border hover:bg-surface-raised transition-colors text-left cursor-pointer group"
             >

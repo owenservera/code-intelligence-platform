@@ -20,6 +20,7 @@ export function CommandPalette() {
   const open = useAppStore((s) => s.commandPaletteOpen)
   const setOpen = useAppStore((s) => s.setCommandPaletteOpen)
   const navigate = useNavigate()
+  const initialQuery = useAppStore((s) => s.commandPaletteInitialQuery)
   const [query, setQuery] = useState('')
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [executing, setExecuting] = useState<string | null>(null)
@@ -68,12 +69,12 @@ export function CommandPalette() {
 
   useEffect(() => {
     if (open) {
-      setQuery('')
+      setQuery(initialQuery ?? '')
       setSelectedIdx(0)
       setDetail(null)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
-  }, [open])
+  }, [open, initialQuery])
 
   const executeCommand = useCallback(
     async (cmd: CommandInfo, params: Record<string, unknown>) => {

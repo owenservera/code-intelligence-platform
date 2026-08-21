@@ -8,6 +8,13 @@ CIP Web Console backend — FastAPI app serving:
   - WS   /ws                  — real-time event stream
   - GET  /*                   — SPA static files (built frontend)
 
+MDM (Master Data Model L0–LA) Intelligence API:
+  - GET  /api/mdm/scan        — run full L0–L9 extraction + LA synthesis
+  - GET  /api/mdm/report      — executive dossier (json or ?format=markdown)
+  - GET  /api/mdm/scorecard   — 5-dimensional health scorecard (lightweight)
+  - GET  /api/mdm/gaps        — L4 IPC/event wiring gaps only
+  - GET  /api/mdm/trace/<id>  — explainability trace for a specific finding
+
 Designed per SPEC-15 §4: additive only, read-only DB on GET, no
 modifications to core CIP modules.
 """
@@ -565,8 +572,13 @@ async def daemon_log_endpoint(lines: int = 200):
     return _ok({"lines": tail, "count": len(tail)})
 
 
+class DaemonActionRequest(BaseModel):
+    port: int | None = None
+    interval: float = 1.0
+
+
 @app.post("/api/daemon/start")
-async def daemon_start_endpoint(port: int | None = None, interval: float = 1.0):
+async def daemon_start_endpoint(req: DaemonActionRequest | None = None, port: int | None = None, interval: float = 1.0):
     """Start the daemon as a separate subprocess (non-blocking job).
 
     GAP-03 guard: if a CIP daemon already runs for this project (tracked in
@@ -576,7 +588,9 @@ async def daemon_start_endpoint(port: int | None = None, interval: float = 1.0):
     from .embed import service_port as _service_port
     r = _require_root()
     pid_key = _project_id_for_root(r)
-    resolved_port = port or _service_port(load_config(r))
+    req_port = req.port if req is not None else None
+    req_interval = req.interval if req is not None else interval
+    resolved_port = req_port or port or _service_port(load_config(r))
     job_id = _register_job("daemon start")
 
     # GAP-03: never double-spawn — reuse the already-running daemon.
@@ -593,7 +607,7 @@ async def daemon_start_endpoint(port: int | None = None, interval: float = 1.0):
 
     def _work():
         try:
-            proc = daemon.start_daemon(r, port=resolved_port, interval=interval)
+            proc = daemon.start_daemon(r, port=resolved_port, interval=req_interval)
             if proc is None:
                 _job_progress(job_id, 100, stage="start",
                               message="daemon already running or failed to spawn")
@@ -634,13 +648,14 @@ async def daemon_stop_endpoint():
 
 
 @app.post("/api/daemon/restart")
-async def daemon_restart_endpoint(port: int | None = None):
+async def daemon_restart_endpoint(req: DaemonActionRequest | None = None, port: int | None = None):
     """Stop then start the daemon (single job)."""
     from .daemon import daemon_stop, start_daemon
     from .embed import service_port as _service_port
     r = _require_root()
     pid_key = _project_id_for_root(r)
-    resolved_port = port or _service_port(load_config(r))
+    req_port = req.port if req is not None else None
+    resolved_port = req_port or port or _service_port(load_config(r))
     job_id = _register_job("daemon restart")
 
     def _work():
@@ -929,12 +944,19 @@ _CONFIG_HINTS: dict[str, dict[str, dict]] = {
     "rerank": {"enabled": {"type": "bool", "desc": "Enable reranking"}},
     "vector": {"backend": {"type": "str", "choices": ["sqlite", "sqlite-vec"], "desc": "Vector backend"}},
     "audit": {"ignore_rules": {"type": "array", "desc": "Rules to suppress"}, "custom_rules_path": {"type": "str", "desc": "Extra rules JSON file"}},
+    "stack": {
+        "prisma_store_contracts": {"type": "bool", "desc": "Prisma schema & contract validation"},
+        "tauri_enabled": {"type": "bool", "desc": "Tauri desktop app integration"},
+    },
+    "profile": {
+        "name": {"type": "str", "desc": "Active repo profile name"},
+    },
     "web": {"host": {"type": "str", "desc": "Web host"}, "port": {"type": "int", "min": 1, "max": 65535, "desc": "Web port (8090)"}, "open_browser": {"type": "bool", "desc": "Open browser on start"}, "auto_manage_daemon": {"type": "bool", "desc": "Auto-start daemon with web"}},
     "serve": {"port": {"type": "int", "min": 1, "max": 65535, "desc": "[legacy; prefer [web] port]"}},
 }
 
 _SCHEMA_ORDER = [
-    "index", "embed", "retrieval", "memory", "mcp", "daemon", "analysis",
+    "index", "stack", "embed", "retrieval", "memory", "mcp", "daemon", "analysis",
     "logging", "performance", "perf", "git", "maintain", "summary", "rerank",
     "vector", "audit", "web", "serve",
 ]
@@ -964,6 +986,41 @@ def _effective_meta() -> int | None:
         return int(row[0]) if row else None
     except Exception:
         return None
+
+
+def _get_detected_profile(root: str) -> dict:
+    """Resolve active repo profile, source files, and configuration."""
+    try:
+        cip_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        repo_settings_dir = os.path.join(cip_base_dir, "repo-settings")
+        if repo_settings_dir not in sys.path:
+            sys.path.insert(0, repo_settings_dir)
+        from detectors import detect_repo_type, load_repo_profile
+        repo_type = detect_repo_type(root)
+        profile_cfg = load_repo_profile(repo_type)
+        profiles_dir = os.path.join(repo_settings_dir, "profiles")
+        folder = os.path.join(profiles_dir, repo_type)
+        if os.path.isdir(folder):
+            p_files = sorted([f for f in os.listdir(folder) if f.endswith('.toml')])
+            p_dir = folder
+        else:
+            single = os.path.join(profiles_dir, f"{repo_type}.toml")
+            p_files = [f"{repo_type}.toml"] if os.path.exists(single) else []
+            p_dir = single if os.path.exists(single) else None
+        return {
+            "repo_type": repo_type,
+            "profile_dir": p_dir,
+            "profile_files": p_files,
+            "profile_config": profile_cfg,
+        }
+    except Exception as exc:
+        return {
+            "repo_type": "generic",
+            "profile_dir": None,
+            "profile_files": [],
+            "profile_config": {},
+            "error": str(exc),
+        }
 
 
 def _config_sources() -> dict:
@@ -998,6 +1055,7 @@ def _config_sources() -> dict:
 
 def config_schema_endpoint():
     """Build per-key schema (type, default, range, source) driving the form."""
+    r = _require_root()
     schema = {}
     sources = _config_sources()
     for section in _SCHEMA_ORDER:
@@ -1030,7 +1088,8 @@ def config_schema_endpoint():
     return _ok({
         "schema": schema,
         "live_schema_version": _effective_meta(),
-        "declared_schema_version": (load_config(_require_root()).get("meta") or {}).get("schema_version"),
+        "declared_schema_version": (load_config(r).get("meta") or {}).get("schema_version"),
+        "detected_profile": _get_detected_profile(r),
     })
 
 
@@ -1049,7 +1108,7 @@ def _apply_updates_to_doc(doc, updates: dict) -> tuple[list[str], list[str]]:
         for key, value in kv.items():
             hint = hints.get(key, {})
             # Reject unknown keys (silently-ignored keys = CORE-39/42 risk)
-            if allowed and key not in allowed:
+            if allowed and key not in allowed and key not in ("include", "prisma_store_contracts", "tauri_enabled"):
                 errors.append(f"{section}.{key}: unknown key (rejected, not written)")
                 continue
             # Deprecated aliases map to live keys (CORE-39)
@@ -1090,7 +1149,7 @@ def _apply_updates_to_doc(doc, updates: dict) -> tuple[list[str], list[str]]:
 
 
 def config_bundle_endpoint():
-    """{effective, file, defaults, sources} — three-way transparency (§3)."""
+    """{effective, file, defaults, sources, detected_profile} — three-way transparency (§3)."""
     import tomllib
     r = _require_root()
     cfg = load_config(r)
@@ -1106,7 +1165,29 @@ def config_bundle_endpoint():
         "file": file_cfg,
         "defaults": DEFAULT_CONFIG,
         "sources": _config_sources(),
+        "detected_profile": _get_detected_profile(r),
     })
+
+
+@app.get("/api/config/profiles")
+async def config_profiles_endpoint():
+    """List available repo profile templates in repo-settings."""
+    try:
+        cip_base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        profiles_dir = os.path.join(cip_base_dir, "repo-settings", "profiles")
+        profiles = []
+        if os.path.isdir(profiles_dir):
+            for entry in sorted(os.listdir(profiles_dir)):
+                full = os.path.join(profiles_dir, entry)
+                if os.path.isdir(full):
+                    toml_files = [f for f in os.listdir(full) if f.endswith('.toml')]
+                    profiles.append({"id": entry, "name": entry, "is_dir": True, "files": toml_files})
+                elif entry.endswith('.toml'):
+                    base_name = entry[:-5]
+                    profiles.append({"id": base_name, "name": base_name, "is_dir": False, "files": [entry]})
+        return _ok({"profiles": profiles})
+    except Exception as exc:
+        return _err("PROFILES_LIST_FAILED", str(exc))
 
 
 @app.get("/api/config/schema")
@@ -2888,8 +2969,298 @@ async def quality_audit_endpoint(req: AuditRequest):
         except Exception as exc:
             _job_error(job_id, str(exc), repo=r)
 
-    asyncio.create_task(_run())
-    return _ok({"job_id": job_id, "status": "running"})
+
+# ── SPEC-Forensics: Deep Intelligence, Ghost Code & AI Context Pack ──────────
+
+GHOST_CODE_RULES = {"HIDDEN-EXPORT", "HIDDEN-ROUTE", "HIDDEN-MODEL", "ARCH-ORPHAN-FILE"}
+SILENT_TRAP_RULES = {"S1", "DB-NO-AWAIT", "DB-N1", "NEXT-CLIENT-LEAK", "NEXT-ROUTE-NO-ERROR", "NEXT-ACTION-NO-VALIDATE", "SEC-SQL-RAW"}
+ARCHITECTURE_RULES = {"ARCH-LAYER-VIOLATION", "QA-CIRCULAR", "QA-GOD-MODULE", "QA-DUP", "TAURI-UNGATED-COMMAND"}
+RISK_RULES = {"QA-UNTESTED-HOT"}
+SECRET_ENV_RULES = {"SEC-HARDCODED-SECRET", "ENV-UNDEFINED", "ENV-UNREAD", "DB-SCHEMA-DRIFT", "DB-MIGRATION-INDEX-DRIFT", "DB-DESTRUCTIVE-MIGRATION", "DB-MISSING-INDEX"}
+
+
+def _categorize_finding(rule: str) -> str:
+    if rule in GHOST_CODE_RULES or "HIDDEN" in rule:
+        return "ghost_code"
+    if rule in SILENT_TRAP_RULES or "NO-AWAIT" in rule or "LEAK" in rule:
+        return "silent_traps"
+    if rule in ARCHITECTURE_RULES or "ARCH-" in rule or "CIRCULAR" in rule or "GOD" in rule:
+        return "architecture"
+    if rule in RISK_RULES or "HOT" in rule:
+        return "risk_matrix"
+    if rule in SECRET_ENV_RULES or "SEC-" in rule or "ENV" in rule or "DB-" in rule:
+        return "secrets_env"
+    return "quality"
+
+
+@app.get("/api/forensics/summary")
+async def forensics_summary_endpoint():
+    """Aggregates repository intelligence across the 5 core forensic dimensions:
+    - ghost_code: Unreferenced exports, uncalled routes, dead models, orphan files.
+    - silent_traps: Swallowed exceptions, unawaited queries, unvalidated actions.
+    - architecture: Layer inversions, circular import cycles, god modules.
+    - risk_matrix: Untested load-bearing hotspots and git churn correlation.
+    - secrets_env: Undefined/unread env vars, hardcoded secrets, schema drift.
+    """
+    from .store import connect
+    from . import gapfill, gitindex
+    r = _require_root()
+    con = connect(r)
+    
+    # Query all open findings
+    try:
+        rows = con.execute(
+            "SELECT id, rule, severity, path, line, symbol_id, title, detail, suggestion, effort "
+            "FROM findings WHERE status='open' ORDER BY severity"
+        ).fetchall()
+        findings = [dict(row) for row in rows]
+    except Exception:
+        findings = []
+
+    categorized: dict[str, list] = {
+        "ghost_code": [],
+        "silent_traps": [],
+        "architecture": [],
+        "risk_matrix": [],
+        "secrets_env": [],
+        "quality": [],
+    }
+
+    severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+
+    for f in findings:
+        cat = _categorize_finding(f.get("rule", ""))
+        categorized[cat].append(f)
+        sev = (f.get("severity") or "low").lower()
+        if sev in severity_counts:
+            severity_counts[sev] += 1
+
+    # Augment risk_matrix with git churn hotspots and untested load-bearing stats
+    hotspots_data = []
+    try:
+        hot = gitindex.hotspots(r, k=10)
+        # Check test coverage per hotspot
+        for h in hot:
+            path = h["path"]
+            syms_n = con.execute("SELECT COUNT(*) c FROM symbols WHERE path=?", (path,)).fetchone()["c"]
+            tested_n = con.execute("""
+                SELECT COUNT(DISTINCT s.id) c FROM symbols s
+                JOIN edges e ON e.src = s.id AND e.kind = 'tested_by'
+                WHERE s.path = ?
+            """, (path,)).fetchone()["c"]
+            cov = round((tested_n / syms_n * 100), 1) if syms_n > 0 else 0.0
+            hotspots_data.append({
+                "path": path,
+                "churn_score": h["score"],
+                "symbols_count": syms_n,
+                "tested_count": tested_n,
+                "coverage_pct": cov,
+                "risk_tier": "critical" if cov < 30 and h["score"] > 5 else ("high" if cov < 60 else "moderate")
+            })
+    except Exception:
+        hotspots_data = []
+
+    # Circular dependency loops from Tarjan SCC
+    cycles_data = []
+    try:
+        circ = gapfill.circular(r)
+        cycles_data = circ.get("cycles", [])
+    except Exception:
+        cycles_data = []
+
+    # Dead symbols count
+    dead_stats = {"count": 0}
+    try:
+        dead_res = gapfill.dead(r, limit=20)
+        dead_stats = {"count": dead_res.get("count", 0), "candidates": dead_res.get("candidate_dead_symbols", [])[:10]}
+    except Exception:
+        pass
+
+    return _ok({
+        "total_findings": len(findings),
+        "by_severity": severity_counts,
+        "dimensions": {
+            "ghost_code": {
+                "count": len(categorized["ghost_code"]),
+                "findings": categorized["ghost_code"],
+                "dead_stats": dead_stats,
+            },
+            "silent_traps": {
+                "count": len(categorized["silent_traps"]),
+                "findings": categorized["silent_traps"],
+            },
+            "architecture": {
+                "count": len(categorized["architecture"]),
+                "findings": categorized["architecture"],
+                "cycles": cycles_data,
+            },
+            "risk_matrix": {
+                "count": len(categorized["risk_matrix"]),
+                "findings": categorized["risk_matrix"],
+                "hotspots": hotspots_data,
+            },
+            "secrets_env": {
+                "count": len(categorized["secrets_env"]),
+                "findings": categorized["secrets_env"],
+            },
+            "quality": {
+                "count": len(categorized["quality"]),
+                "findings": categorized["quality"],
+            }
+        }
+    })
+
+
+@app.get("/api/forensics/dossier")
+async def forensics_dossier_endpoint(format: str = "json"):
+    """Generates an executive-ready architectural and forensic intelligence dossier report."""
+    from . import analysis, gapfill, gitindex
+    from .store import connect
+    r = _require_root()
+    con = connect(r)
+    health = analysis.repo_health_report(r)
+    summary_resp = await forensics_summary_endpoint()
+    summary_data = summary_resp.body
+    try:
+        summary_parsed = json.loads(summary_data).get("data", {})
+    except Exception:
+        summary_parsed = {}
+
+    dims = summary_parsed.get("dimensions", {})
+
+    dossier_json = {
+        "title": f"CIP Executive Forensic Dossier — {os.path.basename(r)}",
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "root": r,
+        "health_score": health.get("overall_score", 0),
+        "findings_by_severity": summary_parsed.get("by_severity", {}),
+        "dimensions_summary": {
+            "ghost_code_issues": dims.get("ghost_code", {}).get("count", 0),
+            "silent_traps_issues": dims.get("silent_traps", {}).get("count", 0),
+            "architectural_violations": dims.get("architecture", {}).get("count", 0),
+            "high_risk_hotspots": len([h for h in dims.get("risk_matrix", {}).get("hotspots", []) if h.get("risk_tier") in ("critical", "high")]),
+            "env_and_security_issues": dims.get("secrets_env", {}).get("count", 0),
+        },
+        "critical_issues": health.get("critical_issues", []),
+        "recommendations": health.get("recommendations", []),
+        "risk_hotspots": dims.get("risk_matrix", {}).get("hotspots", [])[:10],
+    }
+
+    if format == "markdown":
+        md_lines = [
+            f"# {dossier_json['title']}",
+            f"**Generated:** {dossier_json['generated_at']} · **Health Score:** `{dossier_json['health_score']}/100`",
+            "",
+            "## 1. Executive Summary",
+            f"- **Critical Issues:** {summary_parsed.get('by_severity', {}).get('critical', 0)}",
+            f"- **High Severity Issues:** {summary_parsed.get('by_severity', {}).get('high', 0)}",
+            f"- **Ghost Code / Buried Features:** {dims.get('ghost_code', {}).get('count', 0)} items",
+            f"- **Silent Failure Hazards:** {dims.get('silent_traps', {}).get('count', 0)} items",
+            f"- **Boundary / Layer Violations:** {dims.get('architecture', {}).get('count', 0)} items",
+            "",
+            "## 2. Top Risk Hotspots (Churn × Test Deficit)",
+            "| File Path | Churn Score | Coverage % | Risk Tier |",
+            "| :--- | :--- | :--- | :--- |",
+        ]
+        for h in dossier_json["risk_hotspots"]:
+            md_lines.append(f"| `{h['path']}` | {h['churn_score']} | {h['coverage_pct']}% | **{h['risk_tier'].upper()}** |")
+        
+        md_lines.extend([
+            "",
+            "## 3. High Priority Action Plan",
+        ])
+        for i, rec in enumerate(dossier_json["recommendations"][:8], 1):
+            md_lines.append(f"{i}. **[{rec.get('priority', 'ACTION')}]** {rec.get('action')} — _{rec.get('impact', '')}_ (Effort: `{rec.get('effort', 'small')}`)")
+
+        md_text = "\n".join(md_lines) + "\n"
+        return Response(content=md_text, media_type="text/markdown",
+                        headers={"Content-Disposition": f'attachment; filename="cip-forensic-dossier-{time.strftime("%Y%m%d")}.md"'})
+
+    return _ok(dossier_json)
+
+
+class ContextPackRequest(BaseModel):
+    target_path: str | None = None
+    symbol_id: str | None = None
+    max_tokens: int = 4096
+
+
+@app.post("/api/forensics/context-pack")
+async def forensics_context_pack_endpoint(req: ContextPackRequest):
+    """Generates an optimal, token-budgeted AI context pack for Claude/Gemini/GPT-4
+    operating under the canonical 120K token context window ceiling."""
+    from . import repo_map, tokens, predict
+    from .store import connect
+    r = _require_root()
+    con = connect(r)
+    
+    estimator = tokens.TokenEstimator(limit=128000)
+    
+    sections = []
+    
+    # 1. Signature-level Repository Map
+    map_budget = min(req.max_tokens // 2, 2048)
+    try:
+        cfg = repo_map.RepoMapConfig(max_tokens=map_budget, include_signatures=True)
+        rmap = repo_map.generate_repo_map(r, cfg)
+        if rmap.strip():
+            sections.append(f"## 1. Repository Architecture Map (Token-Optimized)\n```\n{rmap.strip()}\n```")
+    except Exception:
+        pass
+
+    # 2. Target File Context & Ast Chunks
+    if req.target_path:
+        try:
+            full_path = Path(r) / req.target_path
+            if full_path.is_file():
+                content = full_path.read_text(encoding="utf-8", errors="replace")
+                # Truncate content to token budget
+                max_chars = req.max_tokens * 3
+                if len(content) > max_chars:
+                    content = content[:max_chars] + f"\n\n... [Truncated: {len(content) - max_chars} characters remaining]"
+                sections.append(f"## 2. Target File: `{req.target_path}`\n```\n{content}\n```")
+        except Exception:
+            pass
+
+    # 3. Symbol Relationship Graph & Callers
+    if req.symbol_id:
+        try:
+            sym = con.execute("SELECT name, kind, path, signature FROM symbols WHERE id=?", (req.symbol_id,)).fetchone()
+            if sym:
+                callers = con.execute("""
+                    SELECT e.src, e.kind FROM edges e
+                    WHERE e.dst = ? LIMIT 15
+                """, (req.symbol_id,)).fetchall()
+                caller_lines = [f"- `{c['src']}` ({c['kind']})" for c in callers]
+                sections.append(f"## 3. Symbol Focus: `{sym['name']}` ({sym['kind']}) in `{sym['path']}`\n"
+                               f"Signature: `{sym['signature']}`\n\n"
+                               f"### Inbound Dependents ({len(caller_lines)}):\n" + "\n".join(caller_lines))
+        except Exception:
+            pass
+
+    # 4. Predictive Next Context Recommendations
+    try:
+        op = "symbol" if req.symbol_id else ("file" if req.target_path else "general")
+        preds = predict.predict_next_context(r, op, current_symbol=req.symbol_id)
+        if preds.get("predictions"):
+            p_lines = [f"- **{p['reason']}** (Tool: `{p['tool']}` · Confidence: {int(p['confidence']*100)}%)"
+                       for p in preds["predictions"][:4]]
+            sections.append("## 4. Intelligent Context Recommendations for Agent\n" + "\n".join(p_lines))
+    except Exception:
+        pass
+
+    full_pack = "\n\n".join(sections)
+    token_count = estimator.estimate(full_pack)
+
+    return _ok({
+        "context_pack": full_pack,
+        "token_count": token_count,
+        "token_limit": 128000,
+        "target_path": req.target_path,
+        "symbol_id": req.symbol_id,
+        "caution_threshold": int(128000 * tokens.CAUTION_THRESHOLD),
+        "emergency_threshold": int(128000 * tokens.EMERGENCY_THRESHOLD),
+    })
 
 
 # ── SPEC-08: Memory Lab ──────────────────────────────────────────────────────
@@ -3846,6 +4217,355 @@ async def cancel_job(job_id: str):
     job["cancelled"] = True
     _job_cancelled(job_id)
     return _ok({"cancelled": True})
+
+
+# ── Forensics & Deep Intelligence ─────────────────────────────────────────────
+@app.get("/api/forensics/summary")
+async def forensics_summary(repo: str | None = None):
+    r = _resolve_root(repo)
+    if not r:
+        return JSONResponse(status_code=400, content=_err("NO_REPO", "No repository root found"))
+    try:
+        from .stack.audit import run_audit
+        from .gitindex import hotspots as git_hotspots
+        from .analysis import repo_health_report
+        from .gapfill import coverage as gapfill_coverage
+        from .store import connect
+
+        # 1. Gather audit findings
+        audit_res = run_audit(r)
+        findings = audit_res.get("findings", [])
+
+        # Categorize findings into 5 forensic dimensions
+        ghost_rules = {"HIDDEN-EXPORT", "HIDDEN-ROUTE", "HIDDEN-MODEL", "ARCH-ORPHAN-FILE"}
+        silent_rules = {"S1", "DB-NO-AWAIT", "DB-N1", "NEXT-CLIENT-LEAK", "NEXT-ROUTE-NO-ERROR", "NEXT-ACTION-NO-VALIDATE", "SEC-SQL-RAW"}
+        arch_rules = {"ARCH-LAYER-VIOLATION", "QA-CIRCULAR", "QA-GOD-MODULE", "QA-DUP", "TAURI-UNGATED-COMMAND"}
+        risk_rules = {"QA-UNTESTED-HOT"}
+        secret_rules = {"SEC-HARDCODED-SECRET", "ENV-UNDEFINED", "ENV-UNREAD", "DB-SCHEMA-DRIFT", "DB-MIGRATION-INDEX-DRIFT", "DB-DESTRUCTIVE-MIGRATION", "DB-MISSING-INDEX"}
+
+        dim_ghost = [f for f in findings if f.get("rule") in ghost_rules]
+        dim_silent = [f for f in findings if f.get("rule") in silent_rules]
+        dim_arch = [f for f in findings if f.get("rule") in arch_rules]
+        dim_risk = [f for f in findings if f.get("rule") in risk_rules]
+        dim_secrets = [f for f in findings if f.get("rule") in secret_rules]
+
+        # 2. Extract dead code candidates & Tarjan cycles
+        con = connect(r)
+        dead_candidates = []
+        cycles = []
+        try:
+            from .analysis import find_dead_symbols, find_circular_dependencies
+            dead_symbols = find_dead_symbols(con, r)
+            dead_candidates = [{"symbol": s.get("name"), "path": s.get("path"), "line": s.get("line")} for s in dead_symbols[:50]]
+        except Exception:
+            pass
+
+        try:
+            from .analysis import find_circular_dependencies
+            raw_cycles = find_circular_dependencies(con)
+            for c in raw_cycles[:20]:
+                cycles.append({"symbols": c, "size": len(c)})
+        except Exception:
+            pass
+
+        # 3. Hotspots correlated with test coverage
+        raw_hotspots = git_hotspots(r, limit=10)
+        cov_info = gapfill_coverage(r).get("actual_coverage", {})
+        cov_pct = cov_info.get("coverage_pct", 0.0)
+
+        risk_hotspots = []
+        for h in raw_hotspots:
+            churn = h.get("churn", 1)
+            symbols_n = h.get("symbols", 0)
+            tested_n = h.get("tested", 0)
+            file_cov = round((tested_n / max(symbols_n, 1)) * 100, 1) if symbols_n > 0 else cov_pct
+            tier = "critical" if churn >= 5 and file_cov < 30 else "high" if churn >= 3 else "medium"
+            risk_hotspots.append({
+                "path": h.get("path", ""),
+                "churn_score": float(churn),
+                "symbols_count": symbols_n,
+                "tested_count": tested_n,
+                "coverage_pct": file_cov,
+                "risk_tier": tier,
+            })
+
+        by_sev = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for f in findings:
+            sev = f.get("severity", "low").lower()
+            if sev in by_sev:
+                by_sev[sev] += 1
+
+        payload = {
+            "total_findings": len(findings),
+            "by_severity": by_sev,
+            "dimensions": {
+                "ghost_code": {
+                    "count": len(dim_ghost) + len(dead_candidates),
+                    "findings": dim_ghost,
+                    "dead_stats": {"count": len(dead_candidates), "candidates": dead_candidates},
+                },
+                "silent_traps": {
+                    "count": len(dim_silent),
+                    "findings": dim_silent,
+                },
+                "architecture": {
+                    "count": len(dim_arch) + len(cycles),
+                    "findings": dim_arch,
+                    "cycles": cycles,
+                },
+                "risk_matrix": {
+                    "count": len(dim_risk) + len(risk_hotspots),
+                    "findings": dim_risk,
+                    "hotspots": risk_hotspots,
+                },
+                "secrets_env": {
+                    "count": len(dim_secrets),
+                    "findings": dim_secrets,
+                },
+            },
+        }
+        return _ok(payload)
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("FORENSICS_ERROR", str(exc)))
+
+
+@app.get("/api/forensics/dossier")
+async def forensics_dossier(repo: str | None = None, format: str = "json"):
+    r = _resolve_root(repo)
+    if not r:
+        return JSONResponse(status_code=400, content=_err("NO_REPO", "No repository root found"))
+    try:
+        from .stack.audit import run_audit
+        from .analysis import repo_health_report
+        audit_res = run_audit(r)
+        health = repo_health_report(r)
+        findings = audit_res.get("findings", [])
+
+        if format == "markdown":
+            score = health.get("overall_score", 0)
+            lines = [
+                "# Code Forensics & Intelligence Dossier",
+                f"**Generated:** {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}",
+                f"**Repository:** `{r}`",
+                f"**Overall Health Score:** {score:.1f}/100",
+                "",
+                "## Executive Summary",
+                f"- **Total Findings:** {len(findings)}",
+                f"- **Critical Hazards:** {len([f for f in findings if f.get('severity') == 'critical'])}",
+                f"- **High Priority:** {len([f for f in findings if f.get('severity') == 'high'])}",
+                "",
+                "## Findings Table",
+                "| Severity | Rule | File | Description |",
+                "| :--- | :--- | :--- | :--- |",
+            ]
+            for f in findings:
+                lines.append(f"| {f.get('severity', '').upper()} | `{f.get('rule', '')}` | `{f.get('path', '')}:{f.get('line', 1)}` | {f.get('title', '')} |")
+            
+            lines.append("")
+            lines.append("## Remediation Guidance")
+            for f in findings[:10]:
+                if f.get("suggestion"):
+                    lines.append(f"- **{f.get('rule')}** in `{f.get('path')}`: {f.get('suggestion')}")
+
+            md_content = "\n".join(lines)
+            return Response(content=md_content, media_type="text/markdown")
+
+        return _ok({"summary": health, "findings": findings})
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("DOSSIER_ERROR", str(exc)))
+
+
+class ContextPackRequest(BaseModel):
+    target_path: str | None = None
+    symbol_id: str | None = None
+    max_tokens: int = 4096
+
+@app.post("/api/forensics/context-pack")
+async def forensics_context_pack(req: ContextPackRequest, repo: str | None = None):
+    r = _resolve_root(repo)
+    if not r:
+        return JSONResponse(status_code=400, content=_err("NO_REPO", "No repository root found"))
+    try:
+        from .repo_map import generate_repo_map, RepoMapConfig
+        from .tokens import TokenEstimator
+        from .predict import predict_next_context
+
+        # 1. Build signature repo map within budget
+        budget = min(max(req.max_tokens, 1024), 16384)
+        map_budget = int(budget * 0.4)
+        cfg = RepoMapConfig(max_tokens=map_budget)
+        sig_map = generate_repo_map(r, cfg)
+
+        sections = [
+            "# CIP AI CONTEXT PACK (ANTI-COMPACTION ENFORCED)",
+            f"Repo: {r}",
+            "Target: " + (req.target_path or "Whole Repository"),
+            "",
+            "## Repository Signature Map",
+            sig_map,
+        ]
+
+        if req.target_path:
+            predicted = predict_next_context(r, "edit", req.target_path)
+            if predicted:
+                sections.extend([
+                    "",
+                    "## High-Probability Dependency Context",
+                    json.dumps(predicted, indent=2),
+                ])
+
+        pack_text = "\n".join(sections)
+        estimator = TokenEstimator(limit=128000)
+        token_count = estimator.count(pack_text)
+
+        return _ok({
+            "context_pack": pack_text,
+            "token_count": token_count,
+            "token_limit": 128000,
+            "budget": budget,
+        })
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("CONTEXT_PACK_ERROR", str(exc)))
+
+
+
+# ── MDM (Master Data Model L0–LA) API Routes ─────────────────────────────────
+
+@app.get("/api/mdm/scan")
+async def mdm_scan_endpoint():
+    """Run full L0–L9 extraction + LA synthesis. Returns layer summaries and finding count.
+
+    Expensive (~10-60s on large repos). Results are persisted to the MDM tables in index.db
+    and can be queried cheaply via the other /api/mdm/* endpoints afterwards.
+
+    Response keys:
+      - extraction: per-layer result summary (L0–L9)
+      - synthesized_findings_count: total LA Finding Records written
+      - elapsed_seconds: wall-clock scan time
+    """
+    from .mdm_engine import run_mdm_extraction
+    from .mdm_synthesis import synthesize_la_findings
+    from .store import connect
+    try:
+        r = _require_root()
+        con = connect(r)
+        ext_res = run_mdm_extraction(r)
+        la_findings = synthesize_la_findings(con, r)
+        return _ok({
+            "extraction": ext_res,
+            "synthesized_findings_count": len(la_findings),
+            "elapsed_seconds": ext_res.get("elapsed_seconds", 0),
+        })
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=_err("NO_PROJECT", str(e)))
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("MDM_SCAN_ERROR", str(exc)))
+
+
+@app.get("/api/mdm/report")
+async def mdm_report_endpoint(format: str = "json"):
+    """Return the full MDM executive dossier without re-running extraction.
+
+    Uses findings already stored from the last /api/mdm/scan run.
+
+    Query params:
+      - format: "json" (default) | "markdown"
+
+    Response (json format):
+      - scorecard: 5-dimensional health scorecard with grades (A–F)
+      - total_la_findings: count of synthesized LA Finding Records
+      - prioritized_findings: top 20 findings with Explainability Traces
+      - wiring_gaps: subset of findings that are L4 IPC/event gaps
+    """
+    from .mdm_synthesis import generate_full_mdm_report, format_report_markdown
+    try:
+        r = _require_root()
+        report = generate_full_mdm_report(r)
+        if format == "markdown":
+            md = format_report_markdown(report)
+            return Response(content=md, media_type="text/markdown")
+        return _ok(report)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=_err("NO_PROJECT", str(e)))
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("MDM_REPORT_ERROR", str(exc)))
+
+
+@app.get("/api/mdm/trace/{finding_id:path}")
+async def mdm_trace_endpoint(finding_id: str):
+    """Fetch the step-by-step Explainability Trace for a specific LA Finding.
+
+    Path param:
+      - finding_id: The finding ID string (e.g. LA-GAP-non_existent_command-ui.ts)
+
+    Response:
+      - finding_id: echoed back
+      - trace_steps: ordered list of {layer, entity_id, evidence_description}
+    """
+    from .mdm_schema import get_explainability_trace
+    from .store import connect
+    try:
+        r = _require_root()
+        con = connect(r)
+        trace = get_explainability_trace(con, finding_id)
+        return _ok({"finding_id": finding_id, "trace_steps": trace})
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=_err("NO_PROJECT", str(e)))
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("MDM_TRACE_ERROR", str(exc)))
+
+
+@app.get("/api/mdm/gaps")
+async def mdm_gaps_endpoint():
+    """Return only the L4 IPC/event wiring gaps from the last MDM scan.
+
+    A lightweight focused view scoped to silent runtime traps:
+      - IPC_UNREGISTERED_COMMAND: frontend invoke() has no backend handler
+      - DEAD_EVENT_LISTENER: listen() registered but no matching emitter
+
+    Response:
+      - swallow_count: AST bare-except swallow count
+      - wiring_gaps_count: total IPC+event gaps
+      - wiring_gaps: list of gap objects (type, name, path, line, detail)
+    """
+    from .mdm_engine import scan_l4_flow_and_wiring
+    from .store import connect
+    try:
+        r = _require_root()
+        con = connect(r)
+        gaps = scan_l4_flow_and_wiring(con, r)
+        return _ok(gaps)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=_err("NO_PROJECT", str(e)))
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("MDM_GAPS_ERROR", str(exc)))
+
+
+@app.get("/api/mdm/scorecard")
+async def mdm_scorecard_endpoint():
+    """Return the 5-dimensional health scorecard from the last MDM scan.
+
+    Lightweight endpoint — reads from pre-computed MDM findings; no re-scan.
+
+    Response:
+      - overall_score: 0-100 composite score
+      - overall_grade: A/B/C/D/F letter grade
+      - dimensions: {reliability_and_flow, security_and_secrets,
+                     architecture_boundaries, code_quality_smells,
+                     evolution_and_churn} each with {score, grade}
+      - counts: {critical, high, medium, total_findings}
+    """
+    from .mdm_synthesis import compute_repo_scorecard
+    from .store import connect
+    try:
+        r = _require_root()
+        con = connect(r)
+        sc = compute_repo_scorecard(con)
+        return _ok(sc)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=_err("NO_PROJECT", str(e)))
+    except Exception as exc:
+        return JSONResponse(status_code=500, content=_err("MDM_SCORECARD_ERROR", str(exc)))
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────────

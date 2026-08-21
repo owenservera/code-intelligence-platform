@@ -105,6 +105,9 @@ class CommandRegistry:
         
         # System Commands
         self._register_system_commands()
+
+        # Master Data Model Commands
+        self._register_mdm_commands()
     
     def _register_repository_commands(self):
         """Register repository management commands."""
@@ -1390,6 +1393,100 @@ class CommandRegistry:
             return handle_selftest_command(root, Namespace(**args))
         except Exception as e:
             return {'error': f'Failed to handle selftest: {str(e)}'}
+
+    def _register_mdm_commands(self):
+        """Register Master Data Model (L0-LA) commands."""
+        self.register(CommandCard(
+            command="mdm_scan",
+            icon="🧬",
+            label="MDM Full Scan (L0-LA)",
+            description="Run complete L0-LA extraction and synthesis",
+            category=CommandCategory.QUALITY,
+            priority=CommandPriority.HIGH,
+            handler=self._handle_mdm_scan,
+            has_form=False
+        ))
+
+        self.register(CommandCard(
+            command="mdm_report",
+            icon="📊",
+            label="MDM Executive Report",
+            description="Generate comprehensive forensic scorecard and dossier",
+            category=CommandCategory.QUALITY,
+            priority=CommandPriority.HIGH,
+            handler=self._handle_mdm_report,
+            parameters=[
+                CommandParameter("markdown", "bool", "Output in markdown", False, False, flag=True)
+            ],
+            has_form=True
+        ))
+
+        self.register(CommandCard(
+            command="mdm_gaps",
+            icon="🗺️",
+            label="MDM Wiring Gaps",
+            description="Scan silent IPC and event wiring gaps",
+            category=CommandCategory.QUALITY,
+            priority=CommandPriority.HIGH,
+            handler=self._handle_mdm_gaps,
+            has_form=False
+        ))
+
+        self.register(CommandCard(
+            command="mdm_trace",
+            icon="🔍",
+            label="MDM Explainability Trace",
+            description="View step-by-step evidence chain for a finding",
+            category=CommandCategory.QUALITY,
+            priority=CommandPriority.MEDIUM,
+            handler=self._handle_mdm_trace,
+            parameters=[
+                CommandParameter("finding_id", "str", "Finding ID (e.g. LA-GAP-...)", True)
+            ],
+            has_form=True
+        ))
+
+    def _handle_mdm_scan(self, root: str, args: dict) -> dict:
+        """Handle MDM scan."""
+        try:
+            from .mdm_engine import run_mdm_extraction
+            from .mdm_synthesis import synthesize_la_findings
+            from .store import connect
+            con = connect(root)
+            ext = run_mdm_extraction(root)
+            syn = synthesize_la_findings(con, root)
+            return {"extraction": ext, "findings_count": len(syn)}
+        except Exception as e:
+            return {"error": f"Failed to run MDM scan: {str(e)}"}
+
+    def _handle_mdm_report(self, root: str, args: dict) -> dict:
+        """Handle MDM report."""
+        try:
+            from .mdm_synthesis import generate_full_mdm_report
+            return generate_full_mdm_report(root)
+        except Exception as e:
+            return {"error": f"Failed to generate MDM report: {str(e)}"}
+
+    def _handle_mdm_gaps(self, root: str, args: dict) -> dict:
+        """Handle MDM gaps."""
+        try:
+            from .mdm_engine import scan_l4_flow_and_wiring
+            from .store import connect
+            con = connect(root)
+            return scan_l4_flow_and_wiring(con, root)
+        except Exception as e:
+            return {"error": f"Failed to scan MDM gaps: {str(e)}"}
+
+    def _handle_mdm_trace(self, root: str, args: dict) -> dict:
+        """Handle MDM trace."""
+        try:
+            from .mdm_schema import get_explainability_trace
+            from .store import connect
+            con = connect(root)
+            fid = args.get("finding_id", "")
+            return {"finding_id": fid, "trace": get_explainability_trace(con, fid)}
+        except Exception as e:
+            return {"error": f"Failed to fetch MDM trace: {str(e)}"}
 
 
 # Global registry instance
